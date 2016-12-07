@@ -1,6 +1,5 @@
 import os
 
-
 # Define ENVIRONMENTAL VARIABLES for project (replaces the app.yaml)
 os.environ.update({
     # 'CTS_TEST_SERVER': 'http://172.20.100.16:8080',
