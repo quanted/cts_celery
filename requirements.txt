@@ -2,3 +2,4 @@ django
 celery
 redis
 requests
+enum34==0.9.19
