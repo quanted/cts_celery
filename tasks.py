@@ -3,8 +3,15 @@ CTS celery instance
 """
 from __future__ import absolute_import
 import os
+from os.path import dirname, abspath
+import sys
 from celery import Celery
 import logging
+
+
+logging.getLogger('celery.task.default').setLevel(logging.DEBUG)
+logging.getLogger().setLevel(logging.DEBUG)
+
 
 # imports URLs for cts_calcs below
 try:
@@ -15,21 +22,26 @@ except ImportError:
     logging.info("Could not import settings_local in celery_cts")
     pass
 
-from cts_calcs.chemaxon_cts import worker as chemaxon_worker
-from cts_calcs.sparc_cts import worker as sparc_worker
-from cts_calcs.epi_cts import worker as epi_worker
-from cts_calcs.test_cts import worker as test_worker
-from cts_calcs.measured_cts import worker as measured_worker
+try:
+    sys.path.insert(0, dirname(dirname(dirname(__file__))))  # adding django project dir to PYTHONPATH
+    logging.info("new path: {}".format(sys.path))
+except SyntaxError as e:
+    logging.warning("Error when adding qed or qed_cts (django project) to PYTHONPATH")
 
-logging.info("INSIDE CELERY APP")
+
+from cts_app.cts_calcs.chemaxon_cts import worker as chemaxon_worker
+from cts_app.cts_calcs.sparc_cts import worker as sparc_worker
+from cts_app.cts_calcs.epi_cts import worker as epi_worker
+from cts_app.cts_calcs.test_cts import worker as test_worker
+from cts_app.cts_calcs.measured_cts import worker as measured_worker
 
 
 if not os.environ.get('REDIS_HOSTNAME'):
     os.environ.setdefault('REDIS_HOSTNAME', 'localhost')
+else:
+    REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME')
 
-REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME')
-
-logging.warning("REDIS HOSTNAME: {}".format(REDIS_HOSTNAME))
+logging.info("REDIS HOSTNAME: {}".format(REDIS_HOSTNAME))
 
 app = Celery('tasks',
 				broker='redis://{}:6379/0'.format(REDIS_HOSTNAME),	
@@ -40,9 +52,6 @@ app.conf.update(
     CELERY_TASK_SERIALIZER='json',
     CELERY_RESULT_SERIALIZER='json',
 )
-
-logging.getLogger('celery.task.default').setLevel(logging.DEBUG)
-logging.getLogger().setLevel(logging.DEBUG)
 
 
 
