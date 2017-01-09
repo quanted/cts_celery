@@ -10,8 +10,9 @@ import logging
 try:
     # from . import settings_local
     import settings_local
+    logging.info("Imported local settings!")
 except ImportError:
-    logging.info("could not import settings_local in celery_cts")
+    logging.info("Could not import settings_local in celery_cts")
     pass
 
 from cts_calcs.chemaxon_cts import worker as chemaxon_worker
@@ -27,14 +28,9 @@ if not os.environ.get('REDIS_HOSTNAME'):
     os.environ.setdefault('REDIS_HOSTNAME', 'localhost')
 
 REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME')
-# REDIS_HOSTNAME = "192.168.1.12"
 
 logging.warning("REDIS HOSTNAME: {}".format(REDIS_HOSTNAME))
 
-# app = Celery('celery', broker='redis://localhost:6379/0', backend='redis://localhost:6379/0')
-# app = Celery(broker='redis://{}:6379/0'.format(REDIS_HOSTNAME),	
-#              backend='redis://{}:6379/0'.format(REDIS_HOSTNAME),
-#              include=['celery_cts.tasks'])
 app = Celery('tasks',
 				broker='redis://{}:6379/0'.format(REDIS_HOSTNAME),	
 				backend='redis://{}:6379/0'.format(REDIS_HOSTNAME))
