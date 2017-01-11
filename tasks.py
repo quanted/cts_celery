@@ -22,24 +22,17 @@ except ImportError:
     logging.info("Could not import settings_local in celery_cts")
     pass
 
-try:
-    sys.path.insert(0, dirname(dirname(dirname(__file__))))  # adding django project dir to PYTHONPATH
-    logging.info("new path: {}".format(sys.path))
-except SyntaxError as e:
-    logging.warning("Error when adding qed or qed_cts (django project) to PYTHONPATH")
+from cts_calcs.chemaxon_cts import worker as chemaxon_worker
+from cts_calcs.sparc_cts import worker as sparc_worker
+from cts_calcs.epi_cts import worker as epi_worker
+from cts_calcs.test_cts import worker as test_worker
+from cts_calcs.measured_cts import worker as measured_worker
 
 
-from cts_app.cts_calcs.chemaxon_cts import worker as chemaxon_worker
-from cts_app.cts_calcs.sparc_cts import worker as sparc_worker
-from cts_app.cts_calcs.epi_cts import worker as epi_worker
-from cts_app.cts_calcs.test_cts import worker as test_worker
-from cts_app.cts_calcs.measured_cts import worker as measured_worker
-
+REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME')
 
 if not os.environ.get('REDIS_HOSTNAME'):
     os.environ.setdefault('REDIS_HOSTNAME', 'localhost')
-else:
-    REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME')
 
 logging.info("REDIS HOSTNAME: {}".format(REDIS_HOSTNAME))
 
