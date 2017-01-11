@@ -1,7 +1,7 @@
 # Builds an image for CTS calculator celery worker
 
 #FROM python:2.7
-FROM puruckertom/uber_py27
+FROM puruckertom/qed_py27
 
 # Install requirements for cts_celery
 COPY requirements.txt /tmp/
