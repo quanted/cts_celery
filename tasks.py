@@ -7,6 +7,7 @@ from os.path import dirname, abspath
 import sys
 from celery import Celery
 import logging
+import redis
 
 
 logging.getLogger('celery.task.default').setLevel(logging.DEBUG)
@@ -35,6 +36,8 @@ if not os.environ.get('REDIS_HOSTNAME'):
     os.environ.setdefault('REDIS_HOSTNAME', 'localhost')
 
 logging.info("REDIS HOSTNAME: {}".format(REDIS_HOSTNAME))
+
+redis_conn = redis.StrictRedis(host=REDIS_HOSTNAME, port=6379, db=0)
 
 app = Celery('tasks',
 				broker='redis://{}:6379/0'.format(REDIS_HOSTNAME),	
