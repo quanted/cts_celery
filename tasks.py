@@ -32,8 +32,11 @@ from cts_calcs.measured_cts import worker as measured_worker
 
 REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME')
 
+logging.warning(">>> REDIS HOSTNAME: {}".format(REDIS_HOSTNAME))
+
 if not os.environ.get('REDIS_HOSTNAME'):
     os.environ.setdefault('REDIS_HOSTNAME', 'localhost')
+    REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME')
 
 logging.info("REDIS HOSTNAME: {}".format(REDIS_HOSTNAME))
 
