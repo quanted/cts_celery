@@ -17,7 +17,8 @@ logging.getLogger().setLevel(logging.DEBUG)
 # imports URLs for cts_calcs below
 try:
     # from . import settings_local
-    import settings_local
+    # import settings_local
+    from settings_local import *
     logging.info("Imported local settings!")
 except ImportError:
     logging.info("Could not import settings_local in celery_cts")
