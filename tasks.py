@@ -14,15 +14,27 @@ logging.getLogger('celery.task.default').setLevel(logging.DEBUG)
 logging.getLogger().setLevel(logging.DEBUG)
 
 
-# imports URLs for cts_calcs below
-try:
-    # from . import settings_local
-    # import settings_local
-    from settings_local import *
-    logging.info("Imported local settings!")
-except ImportError:
-    logging.info("Could not import settings_local in celery_cts")
-    pass
+# imports URLs for cts_calcs below using git-ignored settings_local.py files
+# try:
+#     # from . import settings_local
+#     # import settings_local
+#     from settings_local import *
+#     logging.info("Imported local settings!")
+# except ImportError:
+#     logging.info("Could not import settings_local in celery_cts")
+#     pass
+
+
+# This is where the above should be removed, and instead
+# the set_environment.py module could be ran to set env vars
+# from the config/ env vars files.
+# BUT, can the module be accessed from the parent dir???
+# from qed_cts.set_environment import DeployEnv
+from temp_config.set_environment import DeployEnv
+runtime_env = DeployEnv()
+runtime_env.load_deployment_environment()
+
+
 
 from cts_calcs.chemaxon_cts import worker as chemaxon_worker
 from cts_calcs.sparc_cts import worker as sparc_worker
@@ -32,8 +44,6 @@ from cts_calcs.measured_cts import worker as measured_worker
 
 
 REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME')
-
-logging.warning(">>> REDIS HOSTNAME: {}".format(REDIS_HOSTNAME))
 
 if not os.environ.get('REDIS_HOSTNAME'):
     os.environ.setdefault('REDIS_HOSTNAME', 'localhost')
