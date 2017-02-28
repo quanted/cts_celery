@@ -14,6 +14,7 @@ logging.getLogger('celery.task.default').setLevel(logging.DEBUG)
 logging.getLogger().setLevel(logging.DEBUG)
 
 
+
 # imports URLs for cts_calcs below using git-ignored settings_local.py files
 # try:
 #     # from . import settings_local
@@ -33,6 +34,15 @@ logging.getLogger().setLevel(logging.DEBUG)
 from temp_config.set_environment import DeployEnv
 runtime_env = DeployEnv()
 runtime_env.load_deployment_environment()
+
+
+# from django.conf import settings
+# settings.configure()
+if not os.environ.get('DJANGO_SETTINGS_FILE'):
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'qed_cts.settings_outside')
+else:
+    # os.environ.setdefault('DJANGO_SETTINGS_MODULE', '.' + os.environ.get('DJANGO_SETTINGS_FILE'))
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')
 
 
 
