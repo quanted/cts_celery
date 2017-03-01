@@ -22,7 +22,7 @@ TEMPLATE_ROOT = os.path.join(PROJECT_ROOT, 'templates_qed/') #.replace('\\','/')
 
 try:
 #    SECRET_KEY= os.environ.get('DOCKER_SECRET_KEY')
-    with open('../secret_key_django_dropbox.txt') as f:
+    with open('secret_key_django_dropbox.txt') as f:
         SECRET_KEY = f.read().strip()
 except:
     print "Secret file not set as env variable"
