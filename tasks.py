@@ -46,11 +46,15 @@ else:
 
 
 
-from cts_calcs.chemaxon_cts import worker as chemaxon_worker
+# from cts_calcs.chemaxon_cts import worker as chemaxon_worker
 from cts_calcs.sparc_cts import worker as sparc_worker
-from cts_calcs.epi_cts import worker as epi_worker
-from cts_calcs.test_cts import worker as test_worker
-from cts_calcs.measured_cts import worker as measured_worker
+# from cts_calcs.epi_cts import worker as epi_worker
+# from cts_calcs.test_cts import worker as test_worker
+# from cts_calcs.measured_cts import worker as measured_worker
+from cts_calcs.calculator_chemaxon import ChemaxonCalc
+
+from cts_calcs.calculator import Calculator
+# from calculator import Calculator
 
 
 REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME')
@@ -78,11 +82,21 @@ app.conf.update(
 ##### THE TASKS #####
 
 @app.task
-def chemaxonTask(request_post):
+def calcTask(request_post):
+    """
+    General calculator server request task
+    """
     request = NotDjangoRequest()
     request.POST = request_post
-    logging.info("Request: {}".format(request_post))
-    return chemaxon_worker.request_manager(request)
+    logging.info("Request consumed by calcTask: {}".format(request_post))
+    return ChemaxonCalc().data_request_handler(request_post)
+
+# @app.task
+# def chemaxonTask(request_post):
+#     request = NotDjangoRequest()
+#     request.POST = request_post
+#     logging.info("Request: {}".format(request_post))
+#     return chemaxon_worker.request_manager(request)
 
 
 @app.task
@@ -92,25 +106,25 @@ def sparcTask(request_post):
     return sparc_worker.request_manager(request)
 
 
-@app.task
-def epiTask(request_post):
-    request = NotDjangoRequest()
-    request.POST = request_post
-    return epi_worker.request_manager(request)
+# @app.task
+# def epiTask(request_post):
+#     request = NotDjangoRequest()
+#     request.POST = request_post
+#     return epi_worker.request_manager(request)
 
 
-@app.task
-def testTask(request_post):
-    request = NotDjangoRequest()
-    request.POST = request_post
-    return test_worker.request_manager(request)
+# @app.task
+# def testTask(request_post):
+#     request = NotDjangoRequest()
+#     request.POST = request_post
+#     return test_worker.request_manager(request)
 
 
-@app.task
-def measuredTask(request_post):
-    request = NotDjangoRequest()
-    request.POST = request_post
-    return measured_worker.request_manager(request)
+# @app.task
+# def measuredTask(request_post):
+#     request = NotDjangoRequest()
+#     request.POST = request_post
+#     return measured_worker.request_manager(request)
 
 
 # @shared_task
