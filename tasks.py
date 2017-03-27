@@ -52,6 +52,7 @@ from cts_calcs.sparc_cts import worker as sparc_worker
 # from cts_calcs.test_cts import worker as test_worker
 # from cts_calcs.measured_cts import worker as measured_worker
 from cts_calcs.calculator_chemaxon import ChemaxonCalc
+from cts_calcs.calculator_sparc import SparcCalc
 
 from cts_calcs.calculator import Calculator
 # from calculator import Calculator
@@ -89,7 +90,18 @@ def calcTask(request_post):
     request = NotDjangoRequest()
     request.POST = request_post
     logging.info("Request consumed by calcTask: {}".format(request_post))
-    return ChemaxonCalc().data_request_handler(request_post)
+
+    try:
+        request_calc = request_post['calc']
+        request_service = request_post['service']
+    except KeyError as ke:
+        logging.warning("exception in calcTask: {}".format(ke))
+        raise KeyError("Request to calc task needs 'calc' and 'service' keys")
+
+    if request_calc == 'chemaxon':
+        return ChemaxonCalc().data_request_handler(request_post)
+    elif request_calc == 'sparc':
+        return SparcCalc().data_request_handler(request_post)
 
 # @app.task
 # def chemaxonTask(request_post):
