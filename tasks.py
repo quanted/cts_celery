@@ -83,7 +83,7 @@ app.conf.update(
 ##### THE TASKS #####
 
 @app.task
-def calcTask(request_post):
+def chemaxonTask(request_post):
     """
     General calculator server request task
     """
@@ -92,16 +92,17 @@ def calcTask(request_post):
     logging.info("Request consumed by calcTask: {}".format(request_post))
 
     try:
-        request_calc = request_post['calc']
-        request_service = request_post['service']
+        request_calc = request_post.get('calc')
+        request_service = request_post.get('service')
+        return ChemaxonCalc().data_request_handler(request_post)
     except KeyError as ke:
         logging.warning("exception in calcTask: {}".format(ke))
         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
 
-    if request_calc == 'chemaxon':
-        return ChemaxonCalc().data_request_handler(request_post)
-    elif request_calc == 'sparc':
-        return SparcCalc().data_request_handler(request_post)
+    # if request_calc == 'chemaxon':
+    #     return ChemaxonCalc().data_request_handler(request_post)
+    # elif request_calc == 'sparc':
+    #     return SparcCalc().data_request_handler(request_post)
 
 # @app.task
 # def chemaxonTask(request_post):
@@ -111,11 +112,24 @@ def calcTask(request_post):
 #     return chemaxon_worker.request_manager(request)
 
 
+# @app.task
+# def sparcTask(request_post):
+#     request = NotDjangoRequest()
+#     request.POST = request_post
+#     return sparc_worker.request_manager(request)
 @app.task
 def sparcTask(request_post):
     request = NotDjangoRequest()
     request.POST = request_post
-    return sparc_worker.request_manager(request)
+    # logging.info("Request consumed by calcTask: {}".format(request_post))
+
+    try:
+        request_calc = request_post.get('calc')
+        request_service = request_post.get('service')
+        return SparcCalc().data_request_handler(request_post)
+    except KeyError as ke:
+        logging.warning("exception in calcTask: {}".format(ke))
+        raise KeyError("Request to calc task needs 'calc' and 'service' keys")
 
 
 # @app.task
