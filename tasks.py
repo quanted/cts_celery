@@ -47,12 +47,13 @@ else:
 
 
 # from cts_calcs.chemaxon_cts import worker as chemaxon_worker
-from cts_calcs.sparc_cts import worker as sparc_worker
+# from cts_calcs.sparc_cts import worker as sparc_worker
 # from cts_calcs.epi_cts import worker as epi_worker
 # from cts_calcs.test_cts import worker as test_worker
 # from cts_calcs.measured_cts import worker as measured_worker
 from cts_calcs.calculator_chemaxon import ChemaxonCalc
 from cts_calcs.calculator_sparc import SparcCalc
+from cts_calcs.calculator_epi import EpiCalc
 
 from cts_calcs.calculator import Calculator
 # from calculator import Calculator
@@ -89,7 +90,7 @@ def chemaxonTask(request_post):
     """
     request = NotDjangoRequest()
     request.POST = request_post
-    logging.info("Request consumed by calcTask: {}".format(request_post))
+    # logging.info("Request consumed by chemaxonTask: {}".format(request_post))
 
     try:
         request_calc = request_post.get('calc')
@@ -98,11 +99,6 @@ def chemaxonTask(request_post):
     except KeyError as ke:
         logging.warning("exception in calcTask: {}".format(ke))
         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
-
-    # if request_calc == 'chemaxon':
-    #     return ChemaxonCalc().data_request_handler(request_post)
-    # elif request_calc == 'sparc':
-    #     return SparcCalc().data_request_handler(request_post)
 
 # @app.task
 # def chemaxonTask(request_post):
@@ -128,7 +124,7 @@ def sparcTask(request_post):
         request_service = request_post.get('service')
         return SparcCalc().data_request_handler(request_post)
     except KeyError as ke:
-        logging.warning("exception in calcTask: {}".format(ke))
+        logging.warning("exception in sparcTask: {}".format(ke))
         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
 
 
@@ -137,6 +133,17 @@ def sparcTask(request_post):
 #     request = NotDjangoRequest()
 #     request.POST = request_post
 #     return epi_worker.request_manager(request)
+@app.task
+def epiTask(request_post):
+    request = NotDjangoRequest()
+    request.POST = request_post
+    try:
+        request_calc = request_post.get('calc')
+        request_service = request_post.get('service')
+        return EpiCalc().data_request_handler(request_post)
+    except KeyError as ke:
+        logging.warning("exception in epiTask: {}".format(ke))
+        raise KeyError("Request to calc task needs 'calc' and 'service' keys")
 
 
 # @app.task
