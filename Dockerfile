@@ -10,5 +10,3 @@ RUN pip install --requirement /tmp/requirements.txt
 # Copy the project code
 COPY . /src/
 WORKDIR /src
-
-# ENTRYPOINT ["celery worker -A tasks -Q epi -l info -n epi_worker -c 2"]
