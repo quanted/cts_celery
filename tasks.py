@@ -40,6 +40,7 @@ from cts_calcs.calculator_sparc import SparcCalc
 from cts_calcs.calculator_epi import EpiCalc
 from cts_calcs.calculator_measured import MeasuredCalc
 from cts_calcs.calculator_test import TestCalc
+from cts_calcs.calculator_metabolizer import MetabolizerCalc
 from cts_calcs.calculator import Calculator
 
 
@@ -120,6 +121,17 @@ def measuredTask(request_post):
     try:
         logging.info("celery worker consuming chemaxon task")
         _results = MeasuredCalc().data_request_handler(request_post)
+        Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
+    except KeyError as ke:
+        logging.warning("exception in calcTask: {}".format(ke))
+        raise KeyError("Request to calc task needs 'calc' and 'service' keys")
+
+@app.task
+def metabolizerTask(request_post):
+    try:
+        logging.info("celery worker consuming metabolizer task")
+        _results = MetabolizerCalc().data_request_handler(request_post)
+        logging.warning("PUSHING BACK TO CLIENT: {} ~~~{} ~~~".format(_results, request_post.get('sessionid')))
         Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
     except KeyError as ke:
         logging.warning("exception in calcTask: {}".format(ke))
