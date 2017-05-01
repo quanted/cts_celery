@@ -8,22 +8,11 @@ import sys
 from celery import Celery
 import logging
 import redis
+import json
 
 
 logging.getLogger('celery.task.default').setLevel(logging.DEBUG)
 logging.getLogger().setLevel(logging.DEBUG)
-
-
-
-# imports URLs for cts_calcs below using git-ignored settings_local.py files
-# try:
-#     # from . import settings_local
-#     # import settings_local
-#     from settings_local import *
-#     logging.info("Imported local settings!")
-# except ImportError:
-#     logging.info("Could not import settings_local in celery_cts")
-#     pass
 
 
 # This is where the above should be removed, and instead
@@ -46,11 +35,14 @@ else:
 
 
 
-from cts_calcs.chemaxon_cts import worker as chemaxon_worker
-from cts_calcs.sparc_cts import worker as sparc_worker
-from cts_calcs.epi_cts import worker as epi_worker
-from cts_calcs.test_cts import worker as test_worker
-from cts_calcs.measured_cts import worker as measured_worker
+from cts_calcs.calculator_chemaxon import JchemCalc
+from cts_calcs.calculator_sparc import SparcCalc
+from cts_calcs.calculator_epi import EpiCalc
+from cts_calcs.calculator_measured import MeasuredCalc
+from cts_calcs.calculator_test import TestCalc
+from cts_calcs.calculator_metabolizer import MetabolizerCalc
+from cts_calcs.calculator import Calculator
+
 
 
 REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME')
@@ -61,7 +53,9 @@ if not os.environ.get('REDIS_HOSTNAME'):
 
 logging.info("REDIS HOSTNAME: {}".format(REDIS_HOSTNAME))
 
-redis_conn = redis.StrictRedis(host=REDIS_HOSTNAME, port=6379, db=0)
+
+
+# redis_conn = redis.StrictRedis(host=REDIS_HOSTNAME, port=6379, db=0)
 
 app = Celery('tasks',
 				broker='redis://{}:6379/0'.format(REDIS_HOSTNAME),	
@@ -79,41 +73,71 @@ app.conf.update(
 
 @app.task
 def chemaxonTask(request_post):
-    request = NotDjangoRequest()
-    request.POST = request_post
-    logging.info("Request: {}".format(request_post))
-    return chemaxon_worker.request_manager(request)
+    try:
+        logging.info("celery worker consuming chemaxon task")
+        # return JchemCalc().data_request_handler(request_post, True)
+        _results = JchemCalc().data_request_handler(request_post, True)
+        Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
+    except KeyError as ke:
+        logging.warning("exception in calcTask: {}".format(ke))
+        raise KeyError("Request to calc task needs 'calc' and 'service' keys")
 
 
 @app.task
 def sparcTask(request_post):
-    request = NotDjangoRequest()
-    request.POST = request_post
-    return sparc_worker.request_manager(request)
+    try:
+        logging.info("celery worker consuming chemaxon task")
+        _results = SparcCalc().data_request_handler(request_post)
+        Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
+    except KeyError as ke:
+        logging.warning("exception in calcTask: {}".format(ke))
+        raise KeyError("Request to calc task needs 'calc' and 'service' keys")
 
 
 @app.task
 def epiTask(request_post):
-    request = NotDjangoRequest()
-    request.POST = request_post
-    return epi_worker.request_manager(request)
+    try:
+        logging.info("celery worker consuming chemaxon task")
+        _results = EpiCalc().data_request_handler(request_post)
+        Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
+    except KeyError as ke:
+        logging.warning("exception in calcTask: {}".format(ke))
+        raise KeyError("Request to calc task needs 'calc' and 'service' keys")
 
 
 @app.task
 def testTask(request_post):
-    request = NotDjangoRequest()
-    request.POST = request_post
-    return test_worker.request_manager(request)
+    try:
+        logging.info("celery worker consuming chemaxon task")
+        _results = TestCalc().data_request_handler(request_post)
+        Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
+    except KeyError as ke:
+        logging.warning("exception in calcTask: {}".format(ke))
+        raise KeyError("Request to calc task needs 'calc' and 'service' keys")
 
 
 @app.task
 def measuredTask(request_post):
-    request = NotDjangoRequest()
-    request.POST = request_post
-    return measured_worker.request_manager(request)
+    try:
+        logging.info("celery worker consuming chemaxon task")
+        _results = MeasuredCalc().data_request_handler(request_post)
+        Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
+    except KeyError as ke:
+        logging.warning("exception in calcTask: {}".format(ke))
+        raise KeyError("Request to calc task needs 'calc' and 'service' keys")
+
+@app.task
+def metabolizerTask(request_post):
+    try:
+        logging.info("celery worker consuming metabolizer task")
+        _results = MetabolizerCalc().data_request_handler(request_post)
+        logging.warning("PUSHING BACK TO CLIENT: {} ~~~{} ~~~".format(_results, request_post.get('sessionid')))
+        Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
+    except KeyError as ke:
+        logging.warning("exception in calcTask: {}".format(ke))
+        raise KeyError("Request to calc task needs 'calc' and 'service' keys")
 
 
-# @shared_task
 @app.task
 def removeUserJobsFromQueue(sessionid):
     logging.info("clearing celery task queues..")
@@ -125,24 +149,17 @@ def removeUserJobsFromQueue(sessionid):
 @app.task
 def test_celery(sessionid, message):
     logging.info("!!!received message: {}".format(message))
-    redis_conn.publish(sessionid, "hello from celery")  # async push to user
-
-
-# patch for freeing celery from django while calc views
-# are still relying on django.http Request...
-class NotDjangoRequest(object):
-    def __init__(self):
-        self.POST = {}
+    Calculator().redis_conn.publish(sessionid, "hello from celery")  # async push to user
 
 
 def removeUserJobsFromRedis(sessionid):
     try:
-        user_jobs_json = redis_conn.get(sessionid)  # all user's jobs
+        user_jobs_json = Calculator().redis_conn.get(sessionid)  # all user's jobs
 
         logging.info("user's jobs: {}".format(user_jobs_json))
         
         if user_jobs_json:
-            redis_conn.delete(sessionid)
+            Calculator().redis_conn.delete(sessionid)
 
         return True
         
@@ -153,7 +170,7 @@ def removeUserJobsFromRedis(sessionid):
 def removeUserJobsFromQueue(sessionid):
     from celery.task.control import revoke
 
-    user_jobs_json = redis_conn.get(sessionid)
+    user_jobs_json = Calculator().redis_conn.get(sessionid)
     logging.info("JOBS: {}".format(user_jobs_json))
 
     if not user_jobs_json:
@@ -166,5 +183,4 @@ def removeUserJobsFromQueue(sessionid):
         revoke(job_id, terminate=True)  # stop user job
         logging.info("revoked {} job".format(job_id))
 
-    redis_conn.publish(sessionid, json.dumps({'status': "p-chem data request canceled"}))
-
+    Calculator().redis_conn.publish(sessionid, json.dumps({'status': "p-chem data request canceled"}))
