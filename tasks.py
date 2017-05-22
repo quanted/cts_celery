@@ -42,6 +42,7 @@ from cts_calcs.calculator_measured import MeasuredCalc
 from cts_calcs.calculator_test import TestCalc
 from cts_calcs.calculator_metabolizer import MetabolizerCalc
 from cts_calcs.calculator import Calculator
+from cts_calcs import smilesfilter
 
 
 
@@ -128,21 +129,91 @@ def measuredTask(request_post):
 
 @app.task
 def metabolizerTask(request_post):
-    try:
-        logging.info("celery worker consuming metabolizer task")
-        _results = MetabolizerCalc().data_request_handler(request_post)
-        logging.warning("PUSHING BACK TO CLIENT: {} ~~~{} ~~~".format(_results, request_post.get('sessionid')))
-        Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
-    except KeyError as ke:
-        logging.warning("exception in calcTask: {}".format(ke))
-        raise KeyError("Request to calc task needs 'calc' and 'service' keys")
+    # try:
+    logging.info("celery worker consuming metabolizer task")
+    _results = MetabolizerCalc().data_request_handler(request_post)
+    logging.warning("PUSHING BACK TO CLIENT: {} ~~~{} ~~~".format(_results, request_post.get('sessionid')))
+    Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
+    # except KeyError as ke:
+    #     logging.warning("exception in calcTask: {}".format(ke))
+    #     raise KeyError("Request to calc task needs 'calc' and 'service' keys")
+
+
+@app.task
+def chemInfoTask(request_post):
+    """
+    A websocket version /cts/rest/molecule endpoint
+    """
+
+    _chem_keys = ['chemical','orig_smiles','smiles','formula','iupac','cas','mass','structureData','exactMass']
+
+    logging.info("celery worker consuming chem info task")
+    chemical = request_post.get('chemical')
+    get_sd = request_post.get('get_structure_data')  # bool for getting <cml> format image for marvin sketch
+
+    # try:
+
+    response = Calculator().convertToSMILES({'chemical': chemical})
+    orig_smiles = response['structure']
+    filtered_smiles_response = smilesfilter.filterSMILES(orig_smiles)
+    filtered_smiles = filtered_smiles_response['results'][-1]
+
+    logging.warning("Filtered SMILES: {}".format(filtered_smiles))
+
+    jchem_response = Calculator().getChemDetails({'chemical': filtered_smiles})  # get chemical details
+
+    # molecule_obj = Molecule().createMolecule(chemical, orig_smiles, jchem_response, get_sd)
+    # chem_list = []
+    # for chem_info_dict in jchem_response['data']:
+    molecule_obj = {}
+    for key, val in jchem_response['data'][0].items():
+        molecule_obj[key] = val
+        # chem_list.append(molecule_obj)
+
+    #### only get these if gentrans single mode: ####
+    molecule_obj.update({'node_image': Calculator().nodeWrapper(filtered_smiles, MetabolizerCalc().tree_image_height, MetabolizerCalc().tree_image_width, MetabolizerCalc().image_scale, MetabolizerCalc().metID,'svg', True)})
+    molecule_obj.update({
+        'popup_image': Calculator().popupBuilder(
+            {"smiles": filtered_smiles}, 
+            MetabolizerCalc().metabolite_keys, 
+            "{}".format(request_post.get('id')),
+            "Metabolite Information")
+    })
+    ##################################################
+
+    wrapped_post = {
+        'status': True,  # 'metadata': '',
+        'data': molecule_obj,
+        'request_post': request_post
+    }
+    json_data = json.dumps(wrapped_post)
+
+    logging.warning("Returning Chemical Info: {}".format(json_data))
+
+    Calculator().redis_conn.publish(request_post.get('sessionid'), json_data)
+
+    # return HttpResponse(json_data, content_type='application/json')
+
+    # except KeyError as error:
+    #     logging.warning(error)
+    #     wrapped_post = {
+    #         'status': False, 
+    #         'error': 'Error validating chemical',
+    #         'chemical': chemical
+    #     }
+    #     return HttpResponse(json.dumps(wrapped_post), content_type='application/json')
+    # except Exception as error:
+    #     logging.warning(error)
+    #     wrapped_post = {'status': False, 'error': error}
+    #     return HttpResponse(json.dumps(wrapped_post), content_type='application/json')
+
 
 
 @app.task
 def removeUserJobsFromQueue(sessionid):
-    logging.info("clearing celery task queues..")
+    logging.info("clearing celery task queues from user {}..".format(sessionid))
     removeUserJobsFromQueue(sessionid)  # clear jobs from celery
-    logging.info("clearing redis cache..")
+    logging.info("clearing redis cache from user {}..".format(sessionid))
     removeUserJobsFromRedis(sessionid)  # clear jobs from redis
 
 
