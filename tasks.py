@@ -87,7 +87,7 @@ def chemaxonTask(request_post):
 @app.task
 def sparcTask(request_post):
     try:
-        logging.info("celery worker consuming chemaxon task")
+        logging.info("celery worker consuming sparc task")
         _results = SparcCalc().data_request_handler(request_post)
         Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
     except KeyError as ke:
@@ -98,7 +98,20 @@ def sparcTask(request_post):
 @app.task
 def epiTask(request_post):
     try:
-        logging.info("celery worker consuming chemaxon task")
+        logging.info("celery worker consuming epi task")
+
+        # chem_info = chemInfoTask.apply(args=[request_post], queue='cheminfo').get()
+        # job = chemInfoTask.apply_async(args=[request_post], queue='cheminfo')
+        # _job_result = job.get()
+
+        # logging.warning("Received chem info from worker: {}".format(chem_info))
+
+        # # could handle request to measured queue for MP here:
+        # # melting_point = MeasuredCalc().getMeltingPoint(chem_info['chemical'], request_dict['sessionid'])
+        # measuredTask.apply(args=[chem_info['chemical'], request_post['sessionid']], queue='measured')
+        # request_post['melting_point'] = melting_point
+
+        # how about just getting measured/test MP from REST????
         _results = EpiCalc().data_request_handler(request_post)
         Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
     except KeyError as ke:
@@ -109,7 +122,7 @@ def epiTask(request_post):
 @app.task
 def testTask(request_post):
     try:
-        logging.info("celery worker consuming chemaxon task")
+        logging.info("celery worker consuming TEST task")
         _results = TestCalc().data_request_handler(request_post)
         Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
     except KeyError as ke:
@@ -120,9 +133,10 @@ def testTask(request_post):
 @app.task
 def measuredTask(request_post):
     try:
-        logging.info("celery worker consuming chemaxon task")
+        logging.info("celery worker consuming measured task")
         _results = MeasuredCalc().data_request_handler(request_post)
         Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
+        return _results
     except KeyError as ke:
         logging.warning("exception in calcTask: {}".format(ke))
         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
@@ -165,21 +179,22 @@ def chemInfoTask(request_post):
     # molecule_obj = Molecule().createMolecule(chemical, orig_smiles, jchem_response, get_sd)
     # chem_list = []
     # for chem_info_dict in jchem_response['data']:
-    molecule_obj = {}
+    molecule_obj = {'chemical': filtered_smiles}
     for key, val in jchem_response['data'][0].items():
         molecule_obj[key] = val
         # chem_list.append(molecule_obj)
 
-    #### only get these if gentrans single mode: ####
-    molecule_obj.update({'node_image': Calculator().nodeWrapper(filtered_smiles, MetabolizerCalc().tree_image_height, MetabolizerCalc().tree_image_width, MetabolizerCalc().image_scale, MetabolizerCalc().metID,'svg', True)})
-    molecule_obj.update({
-        'popup_image': Calculator().popupBuilder(
-            {"smiles": filtered_smiles}, 
-            MetabolizerCalc().metabolite_keys, 
-            "{}".format(request_post.get('id')),
-            "Metabolite Information")
-    })
-    ##################################################
+    if request_post.get('is_node'):
+        #### only get these if gentrans single mode: ####
+        molecule_obj.update({'node_image': Calculator().nodeWrapper(filtered_smiles, MetabolizerCalc().tree_image_height, MetabolizerCalc().tree_image_width, MetabolizerCalc().image_scale, MetabolizerCalc().metID,'svg', True)})
+        molecule_obj.update({
+            'popup_image': Calculator().popupBuilder(
+                {"smiles": filtered_smiles}, 
+                MetabolizerCalc().metabolite_keys, 
+                "{}".format(request_post.get('id')),
+                "Metabolite Information")
+        })
+        ##################################################
 
     wrapped_post = {
         'status': True,  # 'metadata': '',
@@ -191,6 +206,8 @@ def chemInfoTask(request_post):
     logging.warning("Returning Chemical Info: {}".format(json_data))
 
     Calculator().redis_conn.publish(request_post.get('sessionid'), json_data)
+
+    return wrapped_post
 
     # return HttpResponse(json_data, content_type='application/json')
 
