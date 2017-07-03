@@ -25,7 +25,7 @@ try:
     with open('secret_key_django_dropbox.txt') as f:
         SECRET_KEY = f.read().strip()
 except:
-    print "Secret file not set as env variable"
+    print("Secret file not set as env variable")
     #SECRET_KEY = 'Shhhhhhhhhhhhhhh'
 
 # cts_api addition:
