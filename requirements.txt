@@ -1,6 +1,6 @@
 django==1.11.3
 celery==4.1.0
-redis
+redis==2.10.5
 requests
 enum34
 python-dotenv
