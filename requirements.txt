@@ -3,4 +3,4 @@ celery==4.1.0
 redis==2.10.5
 requests==2.18.2
 enum34==1.1.6
-python-dotenv
+python-dotenv==0.6.4
