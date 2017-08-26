@@ -1,6 +1,6 @@
 django==1.11.3
 celery==4.1.0
 redis==2.10.6
-requests==2.18.2
+requests==2.18.4
 python-dotenv==0.6.4
 
