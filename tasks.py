@@ -40,6 +40,7 @@ from cts_calcs.calculator_sparc import SparcCalc
 from cts_calcs.calculator_epi import EpiCalc
 from cts_calcs.calculator_measured import MeasuredCalc
 from cts_calcs.calculator_test import TestCalc
+from cts_calcs.calculator_test import TestWSCalc
 from cts_calcs.calculator_metabolizer import MetabolizerCalc
 from cts_calcs.calculator import Calculator
 from cts_calcs import smilesfilter
@@ -99,19 +100,6 @@ def sparcTask(request_post):
 def epiTask(request_post):
     try:
         logging.info("celery worker consuming epi task")
-
-        # chem_info = chemInfoTask.apply(args=[request_post], queue='cheminfo').get()
-        # job = chemInfoTask.apply_async(args=[request_post], queue='cheminfo')
-        # _job_result = job.get()
-
-        # logging.warning("Received chem info from worker: {}".format(chem_info))
-
-        # # could handle request to measured queue for MP here:
-        # # melting_point = MeasuredCalc().getMeltingPoint(chem_info['chemical'], request_dict['sessionid'])
-        # measuredTask.apply(args=[chem_info['chemical'], request_post['sessionid']], queue='measured')
-        # request_post['melting_point'] = melting_point
-
-        # how about just getting measured/test MP from REST????
         _results = EpiCalc().data_request_handler(request_post)
         Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
     except KeyError as ke:
@@ -124,6 +112,17 @@ def testTask(request_post):
     try:
         logging.info("celery worker consuming TEST task")
         _results = TestCalc().data_request_handler(request_post)
+        Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
+    except KeyError as ke:
+        logging.warning("exception in calcTask: {}".format(ke))
+        raise KeyError("Request to calc task needs 'calc' and 'service' keys")
+
+
+@app.task
+def testWSTask(request_post):
+    try:
+        logging.info("celery worker consuming TEST WS task")
+        _results = TestWSCalc().data_request_handler(request_post)
         Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
     except KeyError as ke:
         logging.warning("exception in calcTask: {}".format(ke))
