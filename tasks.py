@@ -207,23 +207,7 @@ def chemInfoTask(request_post):
     Calculator().redis_conn.publish(request_post.get('sessionid'), json_data)
 
     return wrapped_post
-
-    # return HttpResponse(json_data, content_type='application/json')
-
-    # except KeyError as error:
-    #     logging.warning(error)
-    #     wrapped_post = {
-    #         'status': False, 
-    #         'error': 'Error validating chemical',
-    #         'chemical': chemical
-    #     }
-    #     return HttpResponse(json.dumps(wrapped_post), content_type='application/json')
-    # except Exception as error:
-    #     logging.warning(error)
-    #     wrapped_post = {'status': False, 'error': error}
-    #     return HttpResponse(json.dumps(wrapped_post), content_type='application/json')
-
-
+    
 
 @app.task
 def removeUserJobsFromQueue(sessionid):

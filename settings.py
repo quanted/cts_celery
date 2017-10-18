@@ -28,12 +28,6 @@ except:
     print("Secret file not set as env variable")
     #SECRET_KEY = 'Shhhhhhhhhhhhhhh'
 
-# cts_api addition:
-# os.environ.update({'CTS_VERSION': '1.8'})  # keeping CTS version in one place, todo: django var instead
-# NODEJS_HOST = 'nginx'  # default nodejs hostname
-# NODEJS_PORT = 80  # default nodejs port
-# todo: look into ws w/ django 1.10
-
 IS_PUBLIC = False
 
 ADMINS = (
