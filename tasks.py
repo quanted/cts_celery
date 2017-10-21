@@ -98,10 +98,27 @@ def sparcTask(request_post):
 
 @app.task
 def epiTask(request_post):
+    """
+    NOTE: EPI water solubility request now returns two values.
+    There are many ways to parse these, from cts_pchemprop_requests.html to
+    calculator_epi.py. Unlike chemaxon's kow that's 1 call / method, epi
+    returns both methods in one call, so I think it's best in terms of only
+    having to change code in one place, to loop the methods here and push
+    them separately to the front with their on 'method' key:val, which the frontend
+    should hopefully handle it like chemaxon's kow...
+    """
     try:
         logging.info("celery worker consuming epi task")
         _results = EpiCalc().data_request_handler(request_post)
-        Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
+
+        if request_post.get('prop') == 'water_sol':
+            for _method in EpiCalc().propMap['water_sol']['methods']:
+                _data_str = json.dumps(_results['data']['data'])
+                logging.warning("data string: {}".format(_data_str))
+                Calculator().redis_conn.publish(request_post.get('sessionid'), _data_str)
+        else:
+            Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
+
     except KeyError as ke:
         logging.warning("exception in calcTask: {}".format(ke))
         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
