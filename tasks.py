@@ -114,7 +114,8 @@ def epiTask(request_post):
         if request_post.get('prop') == 'water_sol':
             # _result schema for ws: {'data': {'data': [{}, {}]}}
             for _data_obj in _results['data']['data']:
-                _data_obj['calc'] = "epi"  # add calc name for frontend
+                _data_obj['prop'] = "water_sol"  # make sure water sol is key frontend expects
+                _data_obj.update(request_post)  # add request key:vals to result
                 Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_data_obj))
         else:
             Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
