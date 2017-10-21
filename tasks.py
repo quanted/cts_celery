@@ -112,10 +112,9 @@ def epiTask(request_post):
         _results = EpiCalc().data_request_handler(request_post)
 
         if request_post.get('prop') == 'water_sol':
-            for _method in EpiCalc().propMap['water_sol']['methods']:
-                _data_str = json.dumps(_results['data']['data'])
-                logging.warning("data string: {}".format(_data_str))
-                Calculator().redis_conn.publish(request_post.get('sessionid'), _data_str)
+            # _result schema for ws: {'data': {'data': [{}, {}]}}
+            for _data_obj in _results['data']['data']:
+                Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_data_obj))
         else:
             Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
 
