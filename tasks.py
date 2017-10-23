@@ -173,10 +173,8 @@ def metabolizerTask(request_post):
 @app.task
 def chemInfoTask(request_post):
     """
-    A websocket version /cts/rest/molecule endpoint
+    A websocket version of /cts/rest/molecule endpoint
     """
-
-    _chem_keys = ['chemical','orig_smiles','smiles','formula','iupac','cas','mass','structureData','exactMass']
 
     logging.info("celery worker consuming chem info task")
     chemical = request_post.get('chemical')
