@@ -98,10 +98,28 @@ def sparcTask(request_post):
 
 @app.task
 def epiTask(request_post):
+    """
+    NOTE: EPI water solubility request now returns two values.
+    There are many ways to parse these, from cts_pchemprop_requests.html to
+    calculator_epi.py. Unlike chemaxon's kow that's 1 call / method, epi
+    returns both methods in one call, so I think it's best in terms of only
+    having to change code in one place, to loop the methods here and push
+    them separately to the front with their on 'method' key:val, which the frontend
+    should hopefully handle it like chemaxon's kow...
+    """
     try:
         logging.info("celery worker consuming epi task")
         _results = EpiCalc().data_request_handler(request_post)
-        Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
+
+        if request_post.get('prop') == 'water_sol':
+            # _result schema for ws: {'data': {'data': [{}, {}]}}
+            for _data_obj in _results['data']['data']:
+                _data_obj['prop'] = "water_sol"  # make sure water sol is key frontend expects
+                _data_obj.update(request_post)  # add request key:vals to result
+                Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_data_obj))
+        else:
+            Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
+
     except KeyError as ke:
         logging.warning("exception in calcTask: {}".format(ke))
         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
@@ -155,10 +173,8 @@ def metabolizerTask(request_post):
 @app.task
 def chemInfoTask(request_post):
     """
-    A websocket version /cts/rest/molecule endpoint
+    A websocket version of /cts/rest/molecule endpoint
     """
-
-    _chem_keys = ['chemical','orig_smiles','smiles','formula','iupac','cas','mass','structureData','exactMass']
 
     logging.info("celery worker consuming chem info task")
     chemical = request_post.get('chemical')
