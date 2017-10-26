@@ -15,11 +15,6 @@ logging.getLogger('celery.task.default').setLevel(logging.DEBUG)
 logging.getLogger().setLevel(logging.DEBUG)
 
 
-# This is where the above should be removed, and instead
-# the set_environment.py module could be ran to set env vars
-# from the config/ env vars files.
-# BUT, can the module be accessed from the parent dir???
-# from qed_cts.set_environment import DeployEnv
 from temp_config.set_environment import DeployEnv
 runtime_env = DeployEnv()
 runtime_env.load_deployment_environment()
@@ -30,7 +25,6 @@ runtime_env.load_deployment_environment()
 if not os.environ.get('DJANGO_SETTINGS_FILE'):
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'qed_cts.settings_outside')
 else:
-    # os.environ.setdefault('DJANGO_SETTINGS_MODULE', '.' + os.environ.get('DJANGO_SETTINGS_FILE'))
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')
 
 
@@ -71,129 +65,66 @@ app.conf.update(
 
 
 
-##### THE TASKS #####
+##### THE TASKS #########################################################   
 
 @app.task
-def chemaxonTask(request_post):
-    try:
-        logging.info("celery worker consuming chemaxon task")
-        # return JchemCalc().data_request_handler(request_post, True)
-        _results = JchemCalc().data_request_handler(request_post, True)
-        Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
-    except KeyError as ke:
-        logging.warning("exception in calcTask: {}".format(ke))
-        raise KeyError("Request to calc task needs 'calc' and 'service' keys")
+def removeUserJobsFromQueue(sessionid):
+    logging.info("clearing celery task queues from user {}..".format(sessionid))
+    removeUserJobsFromQueue(sessionid)  # clear jobs from celery
+    logging.info("clearing redis cache from user {}..".format(sessionid))
+    removeUserJobsFromRedis(sessionid)  # clear jobs from redis
 
 
 @app.task
-def sparcTask(request_post):
-    try:
-        logging.info("celery worker consuming sparc task")
-        _results = SparcCalc().data_request_handler(request_post)
-        Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
-    except KeyError as ke:
-        logging.warning("exception in calcTask: {}".format(ke))
-        raise KeyError("Request to calc task needs 'calc' and 'service' keys")
+def test_celery(sessionid, message):
+    logging.info("!!!received message: {}".format(message))
+    Calculator().redis_conn.publish(sessionid, "hello from celery")  # async push to user
 
 
 @app.task
-def epiTask(request_post):
+def cts_task(request_post):
+
+    logging.info("Request post coming into cts_task: {}".format(request_post))
+
+    if 'nodes' in request_post:
+        for node in request_post['nodes']:
+            request_post['node'] = node
+            request_post['chemical'] = node['smiles']
+            request_post['mass'] = node['mass']
+            # jobID = requestHandler(sessionid, request_post, client)
+            jobID = requestHandler(request_post.get('sessionid'), request_post)
+    else:
+        # jobID = requestHandler(sessionid, request_post, client)
+        jobID = requestHandler(request_post.get('sessionid'), request_post)
+
+
+##################################################################
+
+
+
+def getChemInfo(request_post):
     """
-    NOTE: EPI water solubility request now returns two values.
-    There are many ways to parse these, from cts_pchemprop_requests.html to
-    calculator_epi.py. Unlike chemaxon's kow that's 1 call / method, epi
-    returns both methods in one call, so I think it's best in terms of only
-    having to change code in one place, to loop the methods here and push
-    them separately to the front with their on 'method' key:val, which the frontend
-    should hopefully handle it like chemaxon's kow...
-    """
-    try:
-        logging.info("celery worker consuming epi task")
-        _results = EpiCalc().data_request_handler(request_post)
+    A websocket version of /cts/rest/molecule endpoint.
 
-        if request_post.get('prop') == 'water_sol':
-            # _result schema for ws: {'data': {'data': [{}, {}]}}
-            for _data_obj in _results['data']['data']:
-                _data_obj['prop'] = "water_sol"  # make sure water sol is key frontend expects
-                _data_obj.update(request_post)  # add request key:vals to result
-                Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_data_obj))
-        else:
-            Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
-
-    except KeyError as ke:
-        logging.warning("exception in calcTask: {}".format(ke))
-        raise KeyError("Request to calc task needs 'calc' and 'service' keys")
-
-
-@app.task
-def testTask(request_post):
-    try:
-        logging.info("celery worker consuming TEST task")
-        _results = TestCalc().data_request_handler(request_post)
-        Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
-    except KeyError as ke:
-        logging.warning("exception in calcTask: {}".format(ke))
-        raise KeyError("Request to calc task needs 'calc' and 'service' keys")
-
-
-@app.task
-def testWSTask(request_post):
-    try:
-        logging.info("celery worker consuming TEST WS task")
-        _results = TestWSCalc().data_request_handler(request_post)
-        Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
-    except KeyError as ke:
-        logging.warning("exception in calcTask: {}".format(ke))
-        raise KeyError("Request to calc task needs 'calc' and 'service' keys")
-
-
-@app.task
-def measuredTask(request_post):
-    try:
-        logging.info("celery worker consuming measured task")
-        _results = MeasuredCalc().data_request_handler(request_post)
-        Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
-        return _results
-    except KeyError as ke:
-        logging.warning("exception in calcTask: {}".format(ke))
-        raise KeyError("Request to calc task needs 'calc' and 'service' keys")
-
-@app.task
-def metabolizerTask(request_post):
-    # try:
-    logging.info("celery worker consuming metabolizer task")
-    _results = MetabolizerCalc().data_request_handler(request_post)
-    logging.warning("PUSHING BACK TO CLIENT: {} ~~~{} ~~~".format(_results, request_post.get('sessionid')))
-    Calculator().redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
-    # except KeyError as ke:
-    #     logging.warning("exception in calcTask: {}".format(ke))
-    #     raise KeyError("Request to calc task needs 'calc' and 'service' keys")
-
-
-@app.task
-def chemInfoTask(request_post):
-    """
-    A websocket version of /cts/rest/molecule endpoint
+    NOTE: Currently doesn't use the actorws services, like
+    cts_rest.py does for the Chemical Editor.
     """
 
     logging.info("celery worker consuming chem info task")
     chemical = request_post.get('chemical')
     get_sd = request_post.get('get_structure_data')  # bool for getting <cml> format image for marvin sketch
 
-    # try:
+    calc_obj = Calculator()
 
-    response = Calculator().convertToSMILES({'chemical': chemical})
+    response = calc_obj.convertToSMILES({'chemical': chemical})
     orig_smiles = response['structure']
     filtered_smiles_response = smilesfilter.filterSMILES(orig_smiles)
     filtered_smiles = filtered_smiles_response['results'][-1]
 
-    logging.warning("Filtered SMILES: {}".format(filtered_smiles))
+    logging.info("Filtered SMILES: {}".format(filtered_smiles))
 
-    jchem_response = Calculator().getChemDetails({'chemical': filtered_smiles})  # get chemical details
+    jchem_response = calc_obj.getChemDetails({'chemical': filtered_smiles})  # get chemical details
 
-    # molecule_obj = Molecule().createMolecule(chemical, orig_smiles, jchem_response, get_sd)
-    # chem_list = []
-    # for chem_info_dict in jchem_response['data']:
     molecule_obj = {'chemical': filtered_smiles}
     for key, val in jchem_response['data'][0].items():
         molecule_obj[key] = val
@@ -201,9 +132,9 @@ def chemInfoTask(request_post):
 
     if request_post.get('is_node'):
         #### only get these if gentrans single mode: ####
-        molecule_obj.update({'node_image': Calculator().nodeWrapper(filtered_smiles, MetabolizerCalc().tree_image_height, MetabolizerCalc().tree_image_width, MetabolizerCalc().image_scale, MetabolizerCalc().metID,'svg', True)})
+        molecule_obj.update({'node_image': calc_obj.nodeWrapper(filtered_smiles, MetabolizerCalc().tree_image_height, MetabolizerCalc().tree_image_width, MetabolizerCalc().image_scale, MetabolizerCalc().metID,'svg', True)})
         molecule_obj.update({
-            'popup_image': Calculator().popupBuilder(
+            'popup_image': calc_obj.popupBuilder(
                 {"smiles": filtered_smiles}, 
                 MetabolizerCalc().metabolite_keys, 
                 "{}".format(request_post.get('id')),
@@ -218,25 +149,10 @@ def chemInfoTask(request_post):
     }
     json_data = json.dumps(wrapped_post)
 
-    logging.warning("Returning Chemical Info: {}".format(json_data))
-
-    Calculator().redis_conn.publish(request_post.get('sessionid'), json_data)
+    logging.info("Returning Chemical Info: {}".format(json_data))
 
     return wrapped_post
-    
 
-@app.task
-def removeUserJobsFromQueue(sessionid):
-    logging.info("clearing celery task queues from user {}..".format(sessionid))
-    removeUserJobsFromQueue(sessionid)  # clear jobs from celery
-    logging.info("clearing redis cache from user {}..".format(sessionid))
-    removeUserJobsFromRedis(sessionid)  # clear jobs from redis
-
-
-@app.task
-def test_celery(sessionid, message):
-    logging.info("!!!received message: {}".format(message))
-    Calculator().redis_conn.publish(sessionid, "hello from celery")  # async push to user
 
 
 def removeUserJobsFromRedis(sessionid):
@@ -258,7 +174,7 @@ def removeUserJobsFromQueue(sessionid):
     from celery.task.control import revoke
 
     user_jobs_json = Calculator().redis_conn.get(sessionid)
-    logging.info("JOBS: {}".format(user_jobs_json))
+    logging.info("{} JOBS: {}".format(sessionid, user_jobs_json))
 
     if not user_jobs_json:
         logging.info("no user jobs, moving on..")
@@ -271,3 +187,122 @@ def removeUserJobsFromQueue(sessionid):
         logging.info("revoked {} job".format(job_id))
 
     Calculator().redis_conn.publish(sessionid, json.dumps({'status': "p-chem data request canceled"}))
+
+
+
+
+
+# function from node_server.js
+# todo: make a celery task class to organize this all better
+def requestHandler(sessionid, data_obj):
+
+    data_obj['sessionid'] = sessionid
+
+    if data_obj.get('service') == 'getSpeciationData':
+        logging.info("celery worker consuming chemaxon task")
+        _results = JchemCalc().data_request_handler(data_obj)
+        Calculator().redis_conn.publish(sessionid, json.dumps(_results))
+
+    elif (data_obj.get('service') == 'getTransProducts'):
+        logging.info("celery worker consuming metabolizer task")
+        _results = MetabolizerCalc().data_request_handler(data_obj)
+        Calculator().redis_conn.publish(sessionid, json.dumps(_results))
+
+    elif (data_obj.get('service') == 'getChemInfo'):
+        logging.info("celery worker consuming cheminfo task")
+        _results = getChemInfo(data_obj)
+        Calculator().redis_conn.publish(sessionid, json.dumps(_results))
+    else:
+        callPchemWorkers(sessionid, data_obj)
+
+    return
+
+
+
+
+def callPchemWorkers(sessionid, data_obj):
+
+    for calc in data_obj['pchem_request']:
+
+        props = data_obj['pchem_request'][calc]
+        data_obj['calc'] = calc
+
+        if calc == 'measured':
+            logging.info("celery worker consuming measured task")
+            measured_calc = MeasuredCalc()
+            _results = measured_calc.data_request_handler(data_obj)
+
+            # NOTE: Measured _results is list of all props, so return all user requested
+            # prop data one at a time so cts frontend knows what to do!
+            # _response_obj = {'calc': calc}
+            _results['calc'] == calc  # may already be set..
+
+            for data_obj in _results.get('data'):
+                for prop in props:
+                    # looping user-selected props (cts named props):
+                    if data_obj['prop'] == measured_calc.propMap[prop]['result_key']:
+                        # match measured prop names..
+                        _results.update({
+                            'prop': prop,
+                            'data': data_obj['data'] 
+                        })
+                        Calculator().redis_conn.publish(sessionid, json.dumps(_results))
+
+        else:
+
+            for prop_index in range(0, len(props)):
+
+                prop = props[prop_index]
+
+                data_obj['prop'] = prop
+
+                is_chemaxon = calc == 'chemaxon'
+                is_kow = prop == 'kow_no_ph' or prop == 'kow_wph'
+                if is_chemaxon and is_kow:
+
+                    chemaxon_calc = JchemCalc()
+
+                    for i in range(0, len(chemaxon_calc.methods)):
+                        data_obj['method'] = chemaxon_calc.methods[i]
+                        logging.info("celery worker consuming chemaxon task")
+                        _results = chemaxon_calc.data_request_handler(data_obj)
+                        Calculator().redis_conn.publish(sessionid, json.dumps(_results))
+
+                else:
+
+                    if calc == 'chemaxon':
+                        logging.info("celery worker consuming chemaxon task")
+                        # _results = JchemCalc().data_request_handler(data_obj)
+                        _results = JchemCalc().data_request_handler(data_obj)
+                        Calculator().redis_conn.publish(sessionid, json.dumps(_results))
+
+                    elif calc == 'sparc':
+                        logging.info("celery worker consuming sparc task")
+                        _results = SparcCalc().data_request_handler(data_obj)
+                        Calculator().redis_conn.publish(sessionid, json.dumps(_results))
+
+                    elif calc == 'epi':
+                        logging.info("celery worker consuming epi task")
+                        _results = EpiCalc().data_request_handler(data_obj)
+
+                        logging.info("EPI RESULTS: {}".format(_results))
+
+                        # if data_obj.get('prop') == 'water_sol':
+                            # _result schema for ws: {'data': {'data': [{}, {}]}}
+                        for _data_obj in _results['data']['data']:
+                            _data_obj['prop'] = "water_sol"  # make sure water sol is key frontend expects
+                            _data_obj.update(data_obj)  # add request key:vals to result
+                            Calculator().redis_conn.publish(sessionid, json.dumps(_data_obj))
+                        # else:
+                        #     Calculator().redis_conn.publish(sessionid, json.dumps(_results))
+   
+                    elif calc == 'test':
+                        logging.info("celery worker consuming TEST task")
+                        _results = TestCalc().data_request_handler(data_obj)
+                        
+                        Calculator().redis_conn.publish(sessionid, json.dumps(_results))
+                    # elif calc == 'testws':
+                    #     client.call('tasks.testWSTask', [data_obj])
+
+                    # elif (calc == 'measured'):
+                    #     client.call('tasks.measuredTask', [data_obj])   
