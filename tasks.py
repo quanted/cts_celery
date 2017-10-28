@@ -152,11 +152,11 @@ def cheminfo_task(request_post):
 
 @app.task
 def removeUserJobsFromQueue(sessionid):
-    _task_obj = CTSTasks
+    _task_obj = QEDTasks()
     logging.info("clearing celery task queues from user {}..".format(sessionid))
-    removeUserJobsFromQueue(sessionid)  # clear jobs from celery
+    _task_obj.revoke_queued_jobs(sessionid)  # clear jobs from celery
     logging.info("clearing redis cache from user {}..".format(sessionid))
-    removeUserJobsFromRedis(sessionid)  # clear jobs from redis
+    _task_obj.remove_redis_jobs(sessionid)  # clear jobs from redis
 
 
 @app.task
@@ -198,7 +198,7 @@ class QEDTasks(object):
         except Exception as e:
             raise e
 
-    def remove_queued_jobs(self, sessionid):
+    def revoke_queued_jobs(self, sessionid):
         """
         Revokes jobs yet started on the worker queues.
         Happens if user hits "cancel" or leaves page while
@@ -292,72 +292,64 @@ class CTSTasks(QEDTasks):
         the redis pushing may be handled at the task function level).
         """
 
-        for calc in request_post['pchem_request']:
+        # for calc in request_post['pchem_request']:
+        calc = request_post['calc']
+        props = request_post['pchem_request'][calc]
 
-            props = request_post['pchem_request'][calc]
-            request_post['calc'] = calc
+        if calc == 'measured':
+            measured_calc = MeasuredCalc()
+            _results = measured_calc.data_request_handler(request_post)
+            _results['calc'] == calc  # may already be set..
+            for request_post in _results.get('data'):
+                for prop in props:
+                    # looping user-selected props (cts named props):
+                    if request_post['prop'] == measured_calc.propMap[prop]['result_key']:
+                        # match measured prop names..
+                        _results.update({
+                            'prop': prop,
+                            'data': request_post['data'] 
+                        })
+                        self.redis_conn.publish(sessionid, json.dumps(_results))
 
-            if calc == 'measured':
-                logging.info("celery worker consuming measured task")
-                measured_calc = MeasuredCalc()
-                _results = measured_calc.data_request_handler(request_post)
-                _results['calc'] == calc  # may already be set..
-                for request_post in _results.get('data'):
-                    for prop in props:
-                        # looping user-selected props (cts named props):
-                        if request_post['prop'] == measured_calc.propMap[prop]['result_key']:
-                            # match measured prop names..
-                            _results.update({
-                                'prop': prop,
-                                'data': request_post['data'] 
-                            })
-                            self.redis_conn.publish(sessionid, json.dumps(_results))
+        else:
 
-            else:
+            for prop_index in range(0, len(props)):
 
-                for prop_index in range(0, len(props)):
+                prop = props[prop_index]
 
-                    prop = props[prop_index]
+                request_post['prop'] = prop
 
-                    request_post['prop'] = prop
+                is_chemaxon = calc == 'chemaxon'
+                is_kow = prop == 'kow_no_ph' or prop == 'kow_wph'
+                if is_chemaxon and is_kow:
 
-                    is_chemaxon = calc == 'chemaxon'
-                    is_kow = prop == 'kow_no_ph' or prop == 'kow_wph'
-                    if is_chemaxon and is_kow:
+                    chemaxon_calc = JchemCalc()
 
-                        chemaxon_calc = JchemCalc()
+                    for i in range(0, len(chemaxon_calc.methods)):
+                        request_post['method'] = chemaxon_calc.methods[i]
+                        _results = chemaxon_calc.data_request_handler(request_post)
+                        self.redis_conn.publish(sessionid, json.dumps(_results))
 
-                        for i in range(0, len(chemaxon_calc.methods)):
-                            request_post['method'] = chemaxon_calc.methods[i]
-                            logging.info("celery worker consuming chemaxon task")
-                            _results = chemaxon_calc.data_request_handler(request_post)
-                            self.redis_conn.publish(sessionid, json.dumps(_results))
+                else:
 
-                    else:
+                    if calc == 'chemaxon':
+                        _results = JchemCalc().data_request_handler(request_post)
+                        self.redis_conn.publish(sessionid, json.dumps(_results))
 
-                        if calc == 'chemaxon':
-                            logging.info("celery worker consuming chemaxon task")
-                            _results = JchemCalc().data_request_handler(request_post)
-                            self.redis_conn.publish(sessionid, json.dumps(_results))
+                    elif calc == 'sparc':
+                        _results = SparcCalc().data_request_handler(request_post)
+                        self.redis_conn.publish(sessionid, json.dumps(_results))
 
-                        elif calc == 'sparc':
-                            logging.info("celery worker consuming sparc task")
-                            _results = SparcCalc().data_request_handler(request_post)
-                            self.redis_conn.publish(sessionid, json.dumps(_results))
+                    elif calc == 'epi':
+                        _results = EpiCalc().data_request_handler(request_post)
 
-                        elif calc == 'epi':
-                            logging.info("celery worker consuming epi task")
-                            _results = EpiCalc().data_request_handler(request_post)
+                        logging.info("EPI RESULTS: {}".format(_results))
 
-                            logging.info("EPI RESULTS: {}".format(_results))
+                        for _data_obj in _results['data']['data']:
+                            _data_obj['prop'] = "water_sol"  # make sure water sol is key frontend expects
+                            _data_obj.update(request_post)  # add request key:vals to result
+                            self.redis_conn.publish(sessionid, json.dumps(_data_obj))
 
-                            for _data_obj in _results['data']['data']:
-                                _data_obj['prop'] = "water_sol"  # make sure water sol is key frontend expects
-                                _data_obj.update(request_post)  # add request key:vals to result
-                                self.redis_conn.publish(sessionid, json.dumps(_data_obj))
-
-                        elif calc == 'test':
-                            logging.info("celery worker consuming TEST task")
-                            _results = TestCalc().data_request_handler(request_post)
-                            
-                            self.redis_conn.publish(sessionid, json.dumps(_results))
+                    elif calc == 'test':
+                        _results = TestCalc().data_request_handler(request_post)
+                        self.redis_conn.publish(sessionid, json.dumps(_results))
