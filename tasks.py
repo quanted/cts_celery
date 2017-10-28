@@ -37,21 +37,13 @@ from cts_calcs.calculator_test import TestWSCalc
 from cts_calcs.calculator_metabolizer import MetabolizerCalc
 from cts_calcs.calculator import Calculator
 from cts_calcs import smilesfilter
+from cts_calcs.chemical_information import ChemInfo
 from celery.task.control import revoke
 
 
 
 REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME', 'localhost')
 REDIS_PORT = os.environ.get('REDIS_PORT', 6379)
-
-# if not os.environ.get('REDIS_HOSTNAME'):
-#     os.environ.setdefault('REDIS_HOSTNAME', 'localhost')
-
-# if not os.environ.get('REDIS_PORT'):
-#     os.environ.setdefault('REDIS_PORT', 6379)
-
-# REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME')
-# REDIS_PORT = os.environ.get('REDIS_PORT')
 
 logging.info("REDIS_HOSTNAME: {}".format(REDIS_HOSTNAME))
 logging.info("REDIS_PORT: {}".format(REDIS_PORT))
@@ -167,6 +159,10 @@ def test_celery(sessionid, message):
 
 
 
+
+
+
+
 ##################################################################
 ########## App classes used by the celery tasks ##################
 ##################################################################
@@ -242,7 +238,7 @@ class CTSTasks(QEDTasks):
         (single job), then leaving page; the celery workers would continue processing
         that job despite the user not being there :(
         """
-        logging.info("~~~ Request post coming into cts_task: {}".format(request_post))
+        logging.info("Request post coming into cts_task: {}".format(request_post))
         if 'nodes' in request_post:
             for node in request_post['nodes']:
                 request_post['node'] = node
@@ -275,7 +271,8 @@ class CTSTasks(QEDTasks):
 
         elif (request_post.get('service') == 'getChemInfo'):
             logging.info("celery worker consuming cheminfo task")
-            _results = getChemInfo(request_post)
+            # _results = getChemInfo(request_post)
+            _results = ChemInfo().get_cheminfo(request_post)
             self.redis_conn.publish(sessionid, json.dumps(_results))
         else:
             self.parse_pchem_request(sessionid, request_post)
@@ -316,7 +313,6 @@ class CTSTasks(QEDTasks):
             for prop_index in range(0, len(props)):
 
                 prop = props[prop_index]
-
                 request_post['prop'] = prop
 
                 is_chemaxon = calc == 'chemaxon'
