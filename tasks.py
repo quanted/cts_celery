@@ -139,7 +139,7 @@ def cheminfo_task(request_post):
         _task_obj.initiate_requests_parsing(request_post)
     except KeyError as ke:
         # TODO: Improve excpetion handling!!!
-        logging.warning("exception in chemaxon_task: {}".format(ke))
+        logging.warning("exception in cheminfo_task: {}".format(ke))
         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
 
 @app.task
@@ -289,24 +289,28 @@ class CTSTasks(QEDTasks):
         the redis pushing may be handled at the task function level).
         """
 
-        # for calc in request_post['pchem_request']:
         calc = request_post['calc']
         props = request_post['pchem_request'][calc]
 
         if calc == 'measured':
             measured_calc = MeasuredCalc()
             _results = measured_calc.data_request_handler(request_post)
-            _results['calc'] == calc  # may already be set..
+            _results['calc'] == calc
+            _returned_props = []  # keeping track of any missing prop data that was requested
             for request_post in _results.get('data'):
                 for prop in props:
                     # looping user-selected props (cts named props):
                     if request_post['prop'] == measured_calc.propMap[prop]['result_key']:
-                        # match measured prop names..
-                        _results.update({
-                            'prop': prop,
-                            'data': request_post['data'] 
-                        })
+                        _results.update({'prop': prop, 'data': request_post.get('data')})
                         self.redis_conn.publish(sessionid, json.dumps(_results))
+                        _returned_props.append(prop)
+
+            # Check for any missing prop data that user requested..
+            _diff_set = set(_returned_props)^set(props)
+            for missing_prop in _diff_set:
+                logging.warning("{} missing from Measured response..".format(missing_prop))
+                _results.update({'prop': missing_prop, 'data': "N/A"})
+                self.redis_conn.publish(sessionid, json.dumps(_results))  # push up as "N/A"
 
         else:
 
@@ -337,12 +341,15 @@ class CTSTasks(QEDTasks):
                         self.redis_conn.publish(sessionid, json.dumps(_results))
 
                     elif calc == 'epi':
-                        _results = EpiCalc().data_request_handler(request_post)
+                        epi_calc = EpiCalc()
+                        _results = epi_calc.data_request_handler(request_post)
 
                         logging.info("EPI RESULTS: {}".format(_results))
-
-                        for _data_obj in _results['data']['data']:
-                            _data_obj['prop'] = "water_sol"  # make sure water sol is key frontend expects
+                        for _data_obj in _results.get('data', {}).get('data'):
+                            logging.info("requested prop: {}".format(prop))
+                            logging.info("epi props: {}".format(epi_calc.epi_props))
+                            _epi_prop = _data_obj.get('prop')
+                            _data_obj['prop'] = epi_calc.props[epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
                             _data_obj.update(request_post)  # add request key:vals to result
                             self.redis_conn.publish(sessionid, json.dumps(_data_obj))
 
