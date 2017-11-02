@@ -36,7 +36,6 @@ from cts_calcs.calculator_test import TestCalc
 from cts_calcs.calculator_test import TestWSCalc
 from cts_calcs.calculator_metabolizer import MetabolizerCalc
 from cts_calcs.calculator import Calculator
-from cts_calcs import smilesfilter
 from cts_calcs.chemical_information import ChemInfo
 from celery.task.control import revoke
 
