@@ -320,7 +320,7 @@ class CTSTasks(QEDTasks):
             # for _data_obj in _results.get('data', {}).get('data'):
             # Looping a list of data objects..
             for _data_obj in _results.get('data', []):
-                logging.info("requested prop: {}".format(prop))
+                # logging.info("requested prop: {}".format(prop))
                 logging.info("epi props: {}".format(epi_calc.epi_props))
                 _epi_prop = _data_obj.get('prop')
                 _data_obj['prop'] = epi_calc.props[epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
