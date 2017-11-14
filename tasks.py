@@ -314,18 +314,40 @@ class CTSTasks(QEDTasks):
         elif calc == 'epi':
 
             epi_calc = EpiCalc()
+
+            # Now that EPI returns all prop results in one request, the
+            # melting point workflow must change. It'd probably be most
+            # efficient to get melting point once, like at this level.
+            # cts_rest.py in cts_api has a request object with 'prop' key, which
+            # is how epi handled websocket/celery requests before the epi update.
+
+            # For now, it'd be easiest to check for water_sol or vapor_press here,
+            # and if either or both exist add a key with val of 'water_sol'. This
+            # will trigger epi_calculator.py to use a 'melting_point' when making
+            # a request to epiws...
+
+            epi_props_list = request_post.get('pchem_request', {}).get('epi', [])
+
+            if 'water_sol' in epi_props_list or 'vapor_press' in epi_props_list:
+                request_post['prop'] = 'water_sol'  # trigger cts epi calc to get MP for epi request
+
             _results = epi_calc.data_request_handler(request_post)
 
             logging.info("EPI RESULTS: {}".format(_results))
             # for _data_obj in _results.get('data', {}).get('data'):
             # Looping a list of data objects..
+
+
+
             for _data_obj in _results.get('data', []):
                 # logging.info("requested prop: {}".format(prop))
                 logging.info("epi props: {}".format(epi_calc.epi_props))
                 _epi_prop = _data_obj.get('prop')
-                _data_obj['prop'] = epi_calc.props[epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
-                _data_obj.update(request_post)  # add request key:vals to result
-                self.redis_conn.publish(sessionid, json.dumps(_data_obj))
+                _cts_prop_name = epi_calc.props[epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
+                if _cts_prop_name in props:
+                    _data_obj['prop'] = _cts_prop_name
+                    _data_obj.update(request_post)  # add request key:vals to result
+                    self.redis_conn.publish(sessionid, json.dumps(_data_obj))
 
         else:
 
