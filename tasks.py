@@ -21,10 +21,10 @@ runtime_env.load_deployment_environment()
 
 
 
-if not os.environ.get('DJANGO_SETTINGS_FILE'):
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'qed_cts.settings_outside')
-else:
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')
+# if not os.environ.get('DJANGO_SETTINGS_FILE'):
+#     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'qed_cts.settings_outside')
+# else:
+#     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')
 
 
 
@@ -311,6 +311,22 @@ class CTSTasks(QEDTasks):
                 _results.update({'prop': missing_prop, 'data': "N/A"})
                 self.redis_conn.publish(sessionid, json.dumps(_results))  # push up as "N/A"
 
+        elif calc == 'epi':
+
+            epi_calc = EpiCalc()
+            _results = epi_calc.data_request_handler(request_post)
+
+            logging.info("EPI RESULTS: {}".format(_results))
+            # for _data_obj in _results.get('data', {}).get('data'):
+            # Looping a list of data objects..
+            for _data_obj in _results.get('data', []):
+                logging.info("requested prop: {}".format(prop))
+                logging.info("epi props: {}".format(epi_calc.epi_props))
+                _epi_prop = _data_obj.get('prop')
+                _data_obj['prop'] = epi_calc.props[epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
+                _data_obj.update(request_post)  # add request key:vals to result
+                self.redis_conn.publish(sessionid, json.dumps(_data_obj))
+
         else:
 
             for prop_index in range(0, len(props)):
@@ -339,18 +355,18 @@ class CTSTasks(QEDTasks):
                         _results = SparcCalc().data_request_handler(request_post)
                         self.redis_conn.publish(sessionid, json.dumps(_results))
 
-                    elif calc == 'epi':
-                        epi_calc = EpiCalc()
-                        _results = epi_calc.data_request_handler(request_post)
+                    # elif calc == 'epi':
+                    #     epi_calc = EpiCalc()
+                    #     _results = epi_calc.data_request_handler(request_post)
 
-                        logging.info("EPI RESULTS: {}".format(_results))
-                        for _data_obj in _results.get('data', {}).get('data'):
-                            logging.info("requested prop: {}".format(prop))
-                            logging.info("epi props: {}".format(epi_calc.epi_props))
-                            _epi_prop = _data_obj.get('prop')
-                            _data_obj['prop'] = epi_calc.props[epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
-                            _data_obj.update(request_post)  # add request key:vals to result
-                            self.redis_conn.publish(sessionid, json.dumps(_data_obj))
+                    #     logging.info("EPI RESULTS: {}".format(_results))
+                    #     for _data_obj in _results.get('data', {}).get('data'):
+                    #         logging.info("requested prop: {}".format(prop))
+                    #         logging.info("epi props: {}".format(epi_calc.epi_props))
+                    #         _epi_prop = _data_obj.get('prop')
+                    #         _data_obj['prop'] = epi_calc.props[epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
+                    #         _data_obj.update(request_post)  # add request key:vals to result
+                    #         self.redis_conn.publish(sessionid, json.dumps(_data_obj))
 
                     elif calc == 'test':
                         _results = TestCalc().data_request_handler(request_post)
