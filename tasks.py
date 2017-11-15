@@ -296,11 +296,18 @@ class CTSTasks(QEDTasks):
             _results = measured_calc.data_request_handler(request_post)
             _results['calc'] == calc
             _returned_props = []  # keeping track of any missing prop data that was requested
-            for request_post in _results.get('data'):
+
+            if 'error' in _results:
+                for prop in props:
+                    _results.update({'prop': prop, 'data': _results.get('error')})
+                    self.redis_conn.publish(sessionid, json.dumps(_results))
+                return
+
+            for _data_obj in _results.get('data'):
                 for prop in props:
                     # looping user-selected props (cts named props):
-                    if request_post['prop'] == measured_calc.propMap[prop]['result_key']:
-                        _results.update({'prop': prop, 'data': request_post.get('data')})
+                    if _data_obj['prop'] == measured_calc.propMap[prop]['result_key']:
+                        _results.update({'prop': prop, 'data': _data_obj.get('data')})
                         self.redis_conn.publish(sessionid, json.dumps(_results))
                         _returned_props.append(prop)
 
@@ -333,20 +340,11 @@ class CTSTasks(QEDTasks):
 
             _results = epi_calc.data_request_handler(request_post)
 
-            logging.info("EPI RESULTS: {}".format(_results))
-            # for _data_obj in _results.get('data', {}).get('data'):
-            # Looping a list of data objects..
-
-
-
             for _data_obj in _results.get('data', []):
-                # logging.info("requested prop: {}".format(prop))
-                logging.info("epi props: {}".format(epi_calc.epi_props))
                 _epi_prop = _data_obj.get('prop')
                 _cts_prop_name = epi_calc.props[epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
                 if _cts_prop_name in props:
                     _data_obj['prop'] = _cts_prop_name
-                    _data_obj.update(request_post)  # add request key:vals to result
                     self.redis_conn.publish(sessionid, json.dumps(_data_obj))
 
         else:
