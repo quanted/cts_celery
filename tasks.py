@@ -344,7 +344,7 @@ class CTSTasks(QEDTasks):
             # key:vals to add to response data objects:
             for key, val in _results.items():
                 if not key == 'data':
-                    _response_info.update(key, val)
+                    _response_info[key] = val
 
             for _data_obj in _results.get('data', []):
                 _epi_prop = _data_obj.get('prop')
