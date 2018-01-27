@@ -10,23 +10,12 @@ import logging
 import redis
 import json
 
-
 logging.getLogger('celery.task.default').setLevel(logging.DEBUG)
 logging.getLogger().setLevel(logging.DEBUG)
-
 
 from temp_config.set_environment import DeployEnv
 runtime_env = DeployEnv()
 runtime_env.load_deployment_environment()
-
-
-
-# if not os.environ.get('DJANGO_SETTINGS_FILE'):
-#     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'qed_cts.settings_outside')
-# else:
-#     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')
-
-
 
 from cts_calcs.calculator_chemaxon import JchemCalc
 from cts_calcs.calculator_sparc import SparcCalc
@@ -59,143 +48,21 @@ app.conf.update(
 
 
 
-
 ##################################################################
 ##### THE TASKS ##################################################
 ##################################################################
 
 @app.task
-def chemaxon_task(request_post):
-	logging.info("celery worker consuming cts chemaxon task..")
+def cts_task(request_post):
 	try:
-		_task_obj = CTSTasks()
-		_results = JchemCalc().data_request_handler(request_post)
-		_task_obj.redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
-	except KeyError as ke:
-		# TODO: Improve excpetion handling!!!
-		logging.warning("exception in chemaxon_task: {}".format(ke))
-		raise KeyError("Request to calc task needs 'calc' and 'service' keys")
-
-@app.task
-def epi_task(request_post):
-
-	_task_obj = CTSTasks()
-	_results = epi_calc.data_request_handler(request_post)
-	_response_info = {}
-	 # key:vals to add to response data objects:
-	for key, val in _results.items():
-		if not key == 'data':
-			_response_info[key] = val
-
-	for _data_obj in _results.get('data', []):
-		_epi_prop = _data_obj.get('prop')
-		_cts_prop_name = epi_calc.props[epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
-
-		_method = None
-		if _data_obj['prop'] == 'water_solubility':
-			_method = _data_obj['method']
-
-		if _cts_prop_name in props:
-			_data_obj.update(_response_info)  # data obj going to client needs some extra keys
-			_data_obj['prop'] = _cts_prop_name
-			
-			if _method:
-				_data_obj['method'] = _method
-
-			_task_obj.redis_conn.publish(request_post.get('sessionid'), json.dumps(_data_obj))
-
-
-@app.task
-def measured_task(request_post):
-	logging.info("celery worker consuming cts measured task..")
-
-	_task_obj = CTSTasks()
-	measured_calc = MeasuredCalc()
-
-	try:
-		_results = measured_calc.data_request_handler(request_post)
-		_results['calc'] == calc
-		_returned_props = []  # keeping track of any missing prop data that was requested
-
-		if 'error' in _results:
-			for prop in props:
-				_results.update({'prop': prop, 'data': _results.get('error')})
-				_task_obj.redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
-			return
-
-		for _data_obj in _results.get('data'):
-			for prop in props:
-				# looping user-selected props (cts named props):
-				if _data_obj['prop'] == measured_calc.propMap[prop]['result_key']:
-					_results.update({'prop': prop, 'data': _data_obj.get('data')})
-					_task_obj.redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
-					_returned_props.append(prop)
-
-		# Check for any missing prop data that user requested..
-		_diff_set = set(_returned_props)^set(props)
-		for missing_prop in _diff_set:
-			logging.warning("{} missing from Measured response..".format(missing_prop))
-			_results.update({'prop': missing_prop, 'data': "N/A"})
-			_task_obj.redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))  # push missing props up as "N/A"
-	
+		cts_task = CTSTasks()
+		sessionid = request_post.get('sessionid')
+		results = cts_task.send_request_to_calcs(sessionid, request_post)
+		cts_task.publish_results_to_redis(sessionid, results)
 	except Exception as e:
-		logging.warning("Exception occurred in Measured task: {}".format(e))
-		logging.warning("Sending request_post with 'error' as 'data' value..")
-		_task_obj.redis_conn.publish(request_post.get('sessionid'), json.dumps(cts_task.build_error_obj(request_post, "error")))
-
-
-
-@app.task
-def test_task(request_post):
-	logging.info("celery worker consuming cts test (calc) task..")
-	try:
-		_task_obj = CTSTasks()
-		# _task_obj.initiate_requests_parsing(request_post)
-		_results = TestCalc().data_request_handler(request_post)
-		_task_obj.redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
-	except KeyError as ke:
-		# TODO: Improve excpetion handling!!!
-		logging.warning("exception in chemaxon_task: {}".format(ke))
-		raise KeyError("Request to calc task needs 'calc' and 'service' keys")
-
-@app.task
-def sparc_task(request_post):
-	logging.info("celery worker consuming cts sparc task..")
-	try:
-		_task_obj = CTSTasks()
-		# _task_obj.initiate_requests_parsing(request_post)
-		_results = SparcCalc().data_request_handler(request_post)
-		_task_obj.redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
-	except KeyError as ke:
-		# TODO: Improve excpetion handling!!!
-		logging.warning("exception in chemaxon_task: {}".format(ke))
-		raise KeyError("Request to calc task needs 'calc' and 'service' keys")
-
-@app.task
-def metabolizer_task(request_post):
-	logging.info("celery worker consuming cts metabolizer task..")
-	try:
-		_task_obj = CTSTasks()
-		# _task_obj.initiate_requests_parsing(request_post)
-		_results = MetabolizerCalc().data_request_handler(request_post)
-		_task_obj.redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
-	except KeyError as ke:
-		# TODO: Improve excpetion handling!!!
-		logging.warning("exception in chemaxon_task: {}".format(ke))
-		raise KeyError("Request to calc task needs 'calc' and 'service' keys")
-
-@app.task
-def cheminfo_task(request_post):
-	logging.info("celery worker consuming cts cheminfo task..")
-	try:
-		_task_obj = CTSTasks()
-		# _task_obj.initiate_requests_parsing(request_post)
-		_results = ChemInfo().get_cheminfo(request_post)
-		_task_obj.redis_conn.publish(request_post.get('sessionid'), json.dumps(_results))
-	except KeyError as ke:
-		# TODO: Improve excpetion handling!!!
-		logging.warning("exception in cheminfo_task: {}".format(ke))
-		raise KeyError("Request to calc task needs 'calc' and 'service' keys")
+		logging.warning("Error in cts_task: {}".format(e))
+		results = cts_task.build_error_obj(request_post, 'error')  # generic error
+		cts_task.redis_conn.publish(sessionid, json.dumps(results))
 
 @app.task
 def removeUserJobsFromQueue(sessionid):
@@ -210,11 +77,6 @@ def removeUserJobsFromQueue(sessionid):
 def test_celery(sessionid, message):
 	logging.info("!!!received message: {}".format(message))
 	Calculator().redis_conn.publish(sessionid, "hello from celery")  # async push to user
-
-
-
-
-
 
 
 
@@ -280,6 +142,8 @@ class CTSTasks(QEDTasks):
 	"""
 	def __init__(self):
 		QEDTasks.__init__(self)
+		self.calcs_multi_request = ['chemaxon', 'sparc', 'test', 'cheminfo', 'metabolizer']  # calcs w/ 1 request/prop
+		self.calcs_single_request = ['epi', 'measured']  # calcs where 1 request returns all props
 
 	def build_error_obj(self, request_post, error_message):
 		default_error_obj = {
@@ -290,184 +154,132 @@ class CTSTasks(QEDTasks):
 		}
 		return default_error_obj
 
+	def send_request_to_calcs(self, sessionid, request_post):
+		"""
+		Further parsing of user request.
+		Checks if 'service', if not it assumes p-chem request
+		TODO: at 'pchem' service instead of assuming..
 
-	# def initiate_requests_parsing(self, request_post):
-	#     """
-	#     Checks if request is single chemical or list of chemicals, then 
-	#     parses request up to fill worker queues w/ single chemical requests.
-	#     This was originally structured this way because revoking celery work
-	#     seems to only be successful for jobs not yet started.
+		Output: Returns nothing, pushes to redis (may not stay this way)
+		"""
+		request_post['sessionid'] = sessionid
 
-	#     It accounts for the case of a user requesting data for many chemicals
-	#     (single job), then leaving page; the celery workers would continue processing
-	#     that job despite the user not being there :(
-	#     """
-	#     logging.info("Request post coming into cts_task: {}".format(request_post))
-	#     if 'nodes' in request_post:
-	#         for node in request_post['nodes']:
-	#             request_post['node'] = node
-	#             request_post['chemical'] = node['smiles']
-	#             request_post['mass'] = node['mass']
-	#             jobID = self.parse_by_service(request_post.get('sessionid'), request_post)
-	#     else:
-	#         jobID = self.parse_by_service(request_post.get('sessionid'), request_post)
+		if request_post.get('service') == 'getSpeciationData':
+			logging.info("celery worker consuming chemaxon task")
+			_results = JchemCalc().data_request_handler(request_post)
+			return _results
 
+		elif (request_post.get('service') == 'getTransProducts'):
+			logging.info("celery worker consuming metabolizer task")
+			_results = MetabolizerCalc().data_request_handler(request_post)
+			return _results
 
-	# def parse_by_service(self, sessionid, request_post):
-	#     """
-	#     Further parsing of user request.
-	#     Checks if 'service', if not it assumes p-chem request
-	#     TODO: at 'pchem' service instead of assuming..
+		elif (request_post.get('service') == 'getChemInfo'):
+			logging.info("celery worker consuming cheminfo task")
+			_results = ChemInfo().get_cheminfo(request_post)
+			return _results
+		else:
+			return self.parse_pchem_request(sessionid, request_post)
 
-	#     Output: Returns nothing, pushes to redis (may not stay this way)
-	#     """
-	#     request_post['sessionid'] = sessionid
+	def parse_pchem_request(self, sessionid, request_post):
+		"""
+		Parse request up by calculator.
+		Returns calc results.
+		"""
+		calc = request_post['calc']
+		props = request_post['pchem_request'][calc]
 
-	#     if request_post.get('service') == 'getSpeciationData':
-	#         logging.info("celery worker consuming chemaxon task")
-	#         _results = JchemCalc().data_request_handler(request_post)
-	#         self.redis_conn.publish(sessionid, json.dumps(_results))
+		if calc == 'chemaxon':
+			return JchemCalc().data_request_handler(request_post)
 
-	#     elif (request_post.get('service') == 'getTransProducts'):
-	#         logging.info("celery worker consuming metabolizer task")
-	#         _results = MetabolizerCalc().data_request_handler(request_post)
-	#         self.redis_conn.publish(sessionid, json.dumps(_results))
+		elif calc == 'sparc':
+			return SparcCalc().data_request_handler(request_post)
 
-	#     elif (request_post.get('service') == 'getChemInfo'):
-	#         logging.info("celery worker consuming cheminfo task")
-	#         # _results = getChemInfo(request_post)
-	#         _results = ChemInfo().get_cheminfo(request_post)
-	#         self.redis_conn.publish(sessionid, json.dumps(_results))
-	#     else:
-	#         self.parse_pchem_request(sessionid, request_post)
+		elif calc == 'test':
+			return TestCalc().data_request_handler(request_post)
 
-	#     return
+		elif calc == 'measured':
+			_results = MeasuredCalc().data_request_handler(request_post)
+			_results['calc'] == calc
+			return _results
 
+		elif calc == 'epi':
+			epi_props_list = request_post.get('pchem_request', {}).get('epi', [])
+			if 'water_sol' in epi_props_list or 'vapor_press' in epi_props_list:
+				request_post['prop'] = 'water_sol'  # trigger cts epi calc to get MP for epi request
+			_results = EpiCalc().data_request_handler(request_post)
+			_results['calc'] = calc
+			return _results
 
-	# def parse_pchem_request(self, sessionid, request_post):
-	#     """
-	#     This function loops a user's p-chem request and parses
-	#     the work by calculator.
+	def publish_results_to_redis(self, sessionid, results):
+		"""
+		Sends results to client via publishing to redis, which
+		gets picked up by nodejs, which ultimately pushes to client.
+		"""
+		logging.info("RESULTS: {}".format(results))
+		_calc = results.get('calc')
 
-	#     Output: Returns nothing, pushes to redis (may not stay this way, instead
-	#     the redis pushing may be handled at the task function level).
-	#     """
+		logging.info("CALC: {}".format(_calc))
 
-	#     calc = request_post['calc']
-	#     props = request_post['pchem_request'][calc]
+		if _calc in self.calcs_multi_request:
+			logging.info("Publishing results to redis..")
+			self.redis_conn.publish(sessionid, json.dumps(results))  # calcs with 1 request per property..
+		elif _calc == 'epi':
+			self.parse_and_publish_epi(sessionid, results)
+		elif _calc == 'measured':
+			self.parse_and_publish_measured(sessionid, results)
 
-	#     if calc == 'measured':
-	#         measured_calc = MeasuredCalc()
-	#         _results = measured_calc.data_request_handler(request_post)
-	#         _results['calc'] == calc
-	#         _returned_props = []  # keeping track of any missing prop data that was requested
+	def parse_and_publish_epi(self, sessionid, results):
+		"""
+		Parse up EPI results and publish them to redis.
+		"""
+		_response_info = {}
 
-	#         if 'error' in _results:
-	#             for prop in props:
-	#                 _results.update({'prop': prop, 'data': _results.get('error')})
-	#                 self.redis_conn.publish(sessionid, json.dumps(_results))
-	#             return
+		 # key:vals to add to response data objects:
+		for key, val in results.items():
+			if not key == 'data':
+				_response_info[key] = val
 
-	#         for _data_obj in _results.get('data'):
-	#             for prop in props:
-	#                 # looping user-selected props (cts named props):
-	#                 if _data_obj['prop'] == measured_calc.propMap[prop]['result_key']:
-	#                     _results.update({'prop': prop, 'data': _data_obj.get('data')})
-	#                     self.redis_conn.publish(sessionid, json.dumps(_results))
-	#                     _returned_props.append(prop)
+		for _data_obj in results.get('data', []):
+			_epi_prop = _data_obj.get('prop')
+			_cts_prop_name = epi_calc.props[epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
 
-	#         # Check for any missing prop data that user requested..
-	#         _diff_set = set(_returned_props)^set(props)
-	#         for missing_prop in _diff_set:
-	#             logging.warning("{} missing from Measured response..".format(missing_prop))
-	#             _results.update({'prop': missing_prop, 'data': "N/A"})
-	#             self.redis_conn.publish(sessionid, json.dumps(_results))  # push up as "N/A"
+			_method = None
+			if _data_obj['prop'] == 'water_solubility':
+				_method = _data_obj['method']
 
-	#     elif calc == 'epi':
+			if _cts_prop_name in props:
+				_data_obj.update(_response_info)  # data obj going to client needs some extra keys
+				_data_obj['prop'] = _cts_prop_name
+				
+				if _method:
+					_data_obj['method'] = _method
 
-	#         epi_calc = EpiCalc()
+				self.redis_conn.publish(sessionid, json.dumps(_data_obj))
 
-	#         # Now that EPI returns all prop results in one request, the
-	#         # melting point workflow must change. It'd probably be most
-	#         # efficient to get melting point once, like at this level.
-	#         # cts_rest.py in cts_api has a request object with 'prop' key, which
-	#         # is how epi handled websocket/celery requests before the epi update.
+	def parse_and_publish_measured(self, sessionid, results):
+		"""
+		Parses up Measured results and publishes them to redis.
+		"""
+		_returned_props = []  # keeping track of any missing prop data that was requested
 
-	#         # For now, it'd be easiest to check for water_sol or vapor_press here,
-	#         # and if either or both exist add a key with val of 'water_sol'. This
-	#         # will trigger epi_calculator.py to use a 'melting_point' when making
-	#         # a request to epiws...
+		if 'error' in results:
+			for prop in props:
+				results.update({'prop': prop, 'data': results.get('error')})
+				self.redis_conn.publish(sessionid, json.dumps(results))
+			# return
 
-	#         epi_props_list = request_post.get('pchem_request', {}).get('epi', [])
+		for _data_obj in results.get('data'):
+			for prop in props:
+				# looping user-selected props (cts named props):
+				if _data_obj['prop'] == measured_calc.propMap[prop]['result_key']:
+					results.update({'prop': prop, 'data': _data_obj.get('data')})
+					self.redis_conn.publish(sessionid, json.dumps(results))
+					_returned_props.append(prop)
 
-	#         if 'water_sol' in epi_props_list or 'vapor_press' in epi_props_list:
-	#             request_post['prop'] = 'water_sol'  # trigger cts epi calc to get MP for epi request
-
-	#         _results = epi_calc.data_request_handler(request_post)
-	#         _response_info = {}
-
-	#         # key:vals to add to response data objects:
-	#         for key, val in _results.items():
-	#             if not key == 'data':
-	#                 _response_info[key] = val
-
-	#         for _data_obj in _results.get('data', []):
-	#             _epi_prop = _data_obj.get('prop')
-	#             _cts_prop_name = epi_calc.props[epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
-
-	#             _method = None
-	#             if _data_obj['prop'] == 'water_solubility':
-	#                 _method = _data_obj['method']
-
-	#             if _cts_prop_name in props:
-	#                 _data_obj.update(_response_info)  # data obj going to client needs some extra keys
-	#                 _data_obj['prop'] = _cts_prop_name
-					
-	#                 if _method: _data_obj['method'] = _method
-
-	#                 self.redis_conn.publish(sessionid, json.dumps(_data_obj))
-
-	#     else:
-
-	#         for prop_index in range(0, len(props)):
-
-	#             prop = props[prop_index]
-	#             request_post['prop'] = prop
-
-	#             is_chemaxon = calc == 'chemaxon'
-	#             is_kow = prop == 'kow_no_ph' or prop == 'kow_wph'
-	#             if is_chemaxon and is_kow:
-
-	#                 chemaxon_calc = JchemCalc()
-
-	#                 for i in range(0, len(chemaxon_calc.methods)):
-	#                     request_post['method'] = chemaxon_calc.methods[i]
-	#                     _results = chemaxon_calc.data_request_handler(request_post)
-	#                     self.redis_conn.publish(sessionid, json.dumps(_results))
-
-	#             else:
-
-	#                 if calc == 'chemaxon':
-	#                     _results = JchemCalc().data_request_handler(request_post)
-	#                     self.redis_conn.publish(sessionid, json.dumps(_results))
-
-	#                 elif calc == 'sparc':
-	#                     _results = SparcCalc().data_request_handler(request_post)
-	#                     self.redis_conn.publish(sessionid, json.dumps(_results))
-
-	#                 # elif calc == 'epi':
-	#                 #     epi_calc = EpiCalc()
-	#                 #     _results = epi_calc.data_request_handler(request_post)
-
-	#                 #     logging.info("EPI RESULTS: {}".format(_results))
-	#                 #     for _data_obj in _results.get('data', {}).get('data'):
-	#                 #         logging.info("requested prop: {}".format(prop))
-	#                 #         logging.info("epi props: {}".format(epi_calc.epi_props))
-	#                 #         _epi_prop = _data_obj.get('prop')
-	#                 #         _data_obj['prop'] = epi_calc.props[epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
-	#                 #         _data_obj.update(request_post)  # add request key:vals to result
-	#                 #         self.redis_conn.publish(sessionid, json.dumps(_data_obj))
-
-	#                 elif calc == 'test':
-	#                     _results = TestCalc().data_request_handler(request_post)
-	#                     self.redis_conn.publish(sessionid, json.dumps(_results))
+		# Check for any missing prop data that user requested..
+		_diff_set = set(_returned_props)^set(props)
+		for missing_prop in _diff_set:
+			logging.warning("{} missing from Measured response..".format(missing_prop))
+			results.update({'prop': missing_prop, 'data': "N/A"})
+			self.redis_conn.publish(sessionid, json.dumps(results))  # push up as "N/A"
