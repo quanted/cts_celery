@@ -339,12 +339,27 @@ class CTSTasks(QEDTasks):
                 request_post['prop'] = 'water_sol'  # trigger cts epi calc to get MP for epi request
 
             _results = epi_calc.data_request_handler(request_post)
+            _response_info = {}
+
+            # key:vals to add to response data objects:
+            for key, val in _results.items():
+                if not key == 'data':
+                    _response_info[key] = val
 
             for _data_obj in _results.get('data', []):
                 _epi_prop = _data_obj.get('prop')
                 _cts_prop_name = epi_calc.props[epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
+
+                _method = None
+                if _data_obj['prop'] == 'water_solubility':
+                    _method = _data_obj['method']
+
                 if _cts_prop_name in props:
+                    _data_obj.update(_response_info)  # data obj going to client needs some extra keys
                     _data_obj['prop'] = _cts_prop_name
+                    
+                    if _method: _data_obj['method'] = _method
+
                     self.redis_conn.publish(sessionid, json.dumps(_data_obj))
 
         else:
