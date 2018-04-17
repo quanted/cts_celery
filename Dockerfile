@@ -1,6 +1,6 @@
 # Builds an image for CTS calculator celery worker
 
-FROM quanted/qed_py3
+FROM quanted/qed_py3:latest
 
 # Install requirements for cts_celery
 # COPY requirements.txt /tmp/
