@@ -1,5 +1,7 @@
 # Builds an image for CTS calculator celery worker
 
+# qed_py3 is debian linux with buildpack-deps
+# updated with all needed qed python dependencies
 # Use 'version' ARG for grabbing correct qed_py3 base image.
 # Defaults to 'latest' if not set.
 ARG version=latest
