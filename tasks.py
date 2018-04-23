@@ -185,9 +185,10 @@ class QEDTasks(object):
         a user is finished with them
         """
         try:
-            user_jobs_json = self.redis_conn.get(sessionid)  # all user's jobs
-            logging.info("user's jobs: {}".format(user_jobs_json))
-            if user_jobs_json:
+            # user_jobs_json = self.redis_conn.get(sessionid)  # all user's jobs
+            user_jobs_list = self.redis_conn.lrange(sessionid, 0, -1)
+            logging.info("user's jobs: {}".format(user_jobs_list))
+            if user_jobs_list:
                 self.redis_conn.delete(sessionid)  # remove key:vals from user
             return True
         except Exception as e:
@@ -200,17 +201,20 @@ class QEDTasks(object):
         requesting data, and is meant to prevent the queues 
         from clogging up with requests.
         """
-        user_jobs_json = self.redis_conn.get(sessionid)
-        logging.info("{} JOBS: {}".format(sessionid, user_jobs_json))
-        if not user_jobs_json:
-            logging.info("no user jobs, moving on..")
+        # user_jobs_list = self.redis_conn.get(sessionid)  # get user's job id list
+        user_jobs_list = self.redis_conn.lrange(sessionid, 0, -1)
+        logging.info("User {}'s JOBS: {}".format(sessionid, user_jobs_list))
+        if not user_jobs_list:
+            logging.warning("No user jobs, moving on..")
             return
-        user_jobs = json.loads(user_jobs_json)
-        for job_id in user_jobs['jobs']:
-            logging.info("revoking job {}".format(job_id))
+        # user_jobs = json.loads(user_jobs_list)
+        # for job_id in user_jobs['jobs']:
+        for job_id in user_jobs_list:
+            logging.info("Revoking job {}..".format(job_id))
             revoke(job_id, terminate=True)  # stop user job
-            logging.info("revoked {} job".format(job_id))
-        self.redis_conn.publish(sessionid, json.dumps({'status': "p-chem data request canceled"}))
+            logging.info("Job {} revoked!".format(job_id))
+        logging.debug("Sending status message to user that jobs have been canceled..")
+        self.redis_conn.publish(sessionid, json.dumps({'status': "Data request canceled"}))
 
 
 
