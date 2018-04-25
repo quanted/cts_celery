@@ -204,17 +204,21 @@ class QEDTasks(object):
         # user_jobs_list = self.redis_conn.get(sessionid)  # get user's job id list
         user_jobs_list = self.redis_conn.lrange(sessionid, 0, -1)
         logging.info("User {}'s JOBS: {}".format(sessionid, user_jobs_list))
+        
         if not user_jobs_list:
             logging.warning("No user jobs, moving on..")
             return
-        # user_jobs = json.loads(user_jobs_list)
-        # for job_id in user_jobs['jobs']:
+
         for job_id in user_jobs_list:
             logging.info("Revoking job {}..".format(job_id))
             revoke(job_id, terminate=True)  # stop user job
             logging.info("Job {} revoked!".format(job_id))
-        logging.debug("Sending status message to user that jobs have been canceled..")
-        self.redis_conn.publish(sessionid, json.dumps({'status': "Data request canceled"}))
+
+        # logging.debug("Sending status message to user that jobs have been canceled..")
+        # error_msg = {
+        #     'cancelRequest': True
+        # }
+        # self.redis_conn.publish(sessionid, json.dumps(error_msg))
 
 
 
