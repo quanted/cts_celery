@@ -185,9 +185,10 @@ class QEDTasks(object):
         a user is finished with them
         """
         try:
-            user_jobs_json = self.redis_conn.get(sessionid)  # all user's jobs
-            logging.info("user's jobs: {}".format(user_jobs_json))
-            if user_jobs_json:
+            # user_jobs_json = self.redis_conn.get(sessionid)  # all user's jobs
+            user_jobs_list = self.redis_conn.lrange(sessionid, 0, -1)
+            logging.info("user's jobs: {}".format(user_jobs_list))
+            if user_jobs_list:
                 self.redis_conn.delete(sessionid)  # remove key:vals from user
             return True
         except Exception as e:
@@ -200,17 +201,24 @@ class QEDTasks(object):
         requesting data, and is meant to prevent the queues 
         from clogging up with requests.
         """
-        user_jobs_json = self.redis_conn.get(sessionid)
-        logging.info("{} JOBS: {}".format(sessionid, user_jobs_json))
-        if not user_jobs_json:
-            logging.info("no user jobs, moving on..")
+        # user_jobs_list = self.redis_conn.get(sessionid)  # get user's job id list
+        user_jobs_list = self.redis_conn.lrange(sessionid, 0, -1)
+        logging.info("User {}'s JOBS: {}".format(sessionid, user_jobs_list))
+        
+        if not user_jobs_list:
+            logging.warning("No user jobs, moving on..")
             return
-        user_jobs = json.loads(user_jobs_json)
-        for job_id in user_jobs['jobs']:
-            logging.info("revoking job {}".format(job_id))
+
+        for job_id in user_jobs_list:
+            logging.info("Revoking job {}..".format(job_id))
             revoke(job_id, terminate=True)  # stop user job
-            logging.info("revoked {} job".format(job_id))
-        self.redis_conn.publish(sessionid, json.dumps({'status': "p-chem data request canceled"}))
+            logging.info("Job {} revoked!".format(job_id))
+
+        # logging.debug("Sending status message to user that jobs have been canceled..")
+        # error_msg = {
+        #     'cancelRequest': True
+        # }
+        # self.redis_conn.publish(sessionid, json.dumps(error_msg))
 
 
 
@@ -346,19 +354,28 @@ class CTSTasks(QEDTasks):
                 if not key == 'data':
                     _response_info[key] = val
 
+            if not isinstance(_results.get('data'), list):
+                self.redis_conn.publish(sessionid, json.dumps({
+                    'data': "cannot reach epi",
+                    'prop': _response_info.get('prop'),
+                    'calc': "epi"})
+                )
+                return
+
             for _data_obj in _results.get('data', []):
                 _epi_prop = _data_obj.get('prop')
                 _cts_prop_name = epi_calc.props[epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
+                _method = _data_obj.get('method')
 
-                _method = None
-                if _data_obj['prop'] == 'water_solubility':
-                    _method = _data_obj['method']
+                if _method:
+                    # Use abbreviated method name for pchem table:
+                    _epi_methods = epi_calc.propMap.get(_cts_prop_name).get('methods', {})
+                    _method = _epi_methods.get(_data_obj['method'])  # use pchem table name for method
 
                 if _cts_prop_name in props:
                     _data_obj.update(_response_info)  # data obj going to client needs some extra keys
                     _data_obj['prop'] = _cts_prop_name
-                    
-                    if _method: _data_obj['method'] = _method
+                    _data_obj['method'] = _method
 
                     self.redis_conn.publish(sessionid, json.dumps(_data_obj))
 
