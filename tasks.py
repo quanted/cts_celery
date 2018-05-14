@@ -305,6 +305,15 @@ class CTSTasks(QEDTasks):
             _results['calc'] == calc
             _returned_props = []  # keeping track of any missing prop data that was requested
 
+            # check if results are valid:
+            if not _results.get('valid'):
+                # not valid, send error message in place of data for requested props..
+                for measured_prop in request_post.get('pchem_request', {}).get('measured', []):
+                    logging.debug("Sending {} back".format(measured_prop))
+                    _results['prop'] = measured_prop
+                    self.redis_conn.publish(sessionid, json.dumps(_results))
+                return
+
             if 'error' in _results:
                 for prop in props:
                     _results.update({'prop': prop, 'data': _results.get('error')})
