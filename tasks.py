@@ -24,7 +24,8 @@ runtime_env.load_deployment_environment()
 # if not os.environ.get('DJANGO_SETTINGS_FILE'):
 #     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'qed_cts.settings_outside')
 # else:
-#     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')
+#     # os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')  # loads faux django settings so celery can use django lib for templating
 
 
 
