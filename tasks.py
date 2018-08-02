@@ -416,5 +416,7 @@ class CTSTasks(QEDTasks):
                         self.redis_conn.publish(sessionid, json.dumps(_results))
 
                     elif calc == 'test':
-                        _results = TestCalc().data_request_handler(request_post)
+                        # _results = TestCalc().data_request_handler(request_post)
+                        _results = TestWSCalc().data_request_handler(request_post)  # Using TESTWS instead of in-house TEST model
+                        print("Returning TESTWS results: {}".format(_results))
                         self.redis_conn.publish(sessionid, json.dumps(_results))
