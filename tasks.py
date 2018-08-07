@@ -75,6 +75,9 @@ def chemaxon_task(request_post):
         # TODO: Improve excpetion handling!!!
         logging.warning("exception in chemaxon_task: {}".format(ke))
         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
+    except celery.exceptions.TimeoutError as e:
+        logging.warning("Timeout excpetion occurred in chemaxon_task: {}".format(e))
+
 
 @app.task
 def epi_task(request_post):
@@ -86,6 +89,8 @@ def epi_task(request_post):
         # TODO: Improve excpetion handling!!!
         logging.warning("exception in chemaxon_task: {}".format(ke))
         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
+    except celery.exceptions.TimeoutError as e:
+        logging.warning("Timeout excpetion occurred in epi_task: {}".format(e))
 
 @app.task
 def measured_task(request_post):
@@ -97,6 +102,8 @@ def measured_task(request_post):
         # TODO: Improve excpetion handling!!!
         logging.warning("exception in chemaxon_task: {}".format(ke))
         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
+    except celery.exceptions.TimeoutError as e:
+        logging.warning("Timeout excpetion occurred in measured_task: {}".format(e))
 
 @app.task
 def test_task(request_post):
@@ -108,6 +115,8 @@ def test_task(request_post):
         # TODO: Improve excpetion handling!!!
         logging.warning("exception in chemaxon_task: {}".format(ke))
         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
+    except celery.exceptions.TimeoutError as e:
+        logging.warning("Timeout excpetion occurred in test_task: {}".format(e))
 
 @app.task
 def sparc_task(request_post):
@@ -119,6 +128,8 @@ def sparc_task(request_post):
         # TODO: Improve excpetion handling!!!
         logging.warning("exception in chemaxon_task: {}".format(ke))
         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
+    except celery.exceptions.TimeoutError as e:
+        logging.warning("Timeout excpetion occurred in sparc_task: {}".format(e))
 
 @app.task
 def metabolizer_task(request_post):
@@ -130,6 +141,8 @@ def metabolizer_task(request_post):
         # TODO: Improve excpetion handling!!!
         logging.warning("exception in chemaxon_task: {}".format(ke))
         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
+    except celery.exceptions.TimeoutError as e:
+        logging.warning("Timeout excpetion occurred in metabolizer_task: {}".format(e))
 
 @app.task
 def cheminfo_task(request_post):
@@ -141,6 +154,16 @@ def cheminfo_task(request_post):
         # TODO: Improve excpetion handling!!!
         logging.warning("exception in cheminfo_task: {}".format(ke))
         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
+    except Exception as e:
+        logging.warning("A general exception occurred!!")
+    # except celery.exceptions.TimeoutError as e:
+    #     logging.warning("Timeout excpetion occurred in cheminfo_task: {}".format(e))
+    # except celery.exceptions.TimeLimitExceeded as e:
+    #     logging.warning("@@@ Time limit exceeded!! ")
+    # except celery.exceptions.SoftTimeLimitExceeded as e:
+    #     logging.warning("@@@ Soft time limit exceeded!! ")
+    # except celery.exceptions.TaskRevokedError as e:
+    #     logging.warning("@@@ Task revoked error!!")
 
 @app.task
 def removeUserJobsFromQueue(sessionid):
@@ -400,9 +423,20 @@ class CTSTasks(QEDTasks):
 
                     chemaxon_calc = JchemCalc()
 
+                    # Making request for each method (required by jchem ws):
                     for i in range(0, len(chemaxon_calc.methods)):
                         request_post['method'] = chemaxon_calc.methods[i]
                         _results = chemaxon_calc.data_request_handler(request_post)
+                        self.redis_conn.publish(sessionid, json.dumps(_results))
+
+                elif calc == 'test':
+
+                    testws_calc = TestWSCalc()  # TODO: Change TEST to TheTEST (or TESTWS) to prevent future problems with testing libraries, etc.
+
+                    for method in testws_calc.methods:
+                        # Makes requests for each TESTWS method available:
+                        request_post['method'] = method
+                        _results = testws_calc.data_request_handler(request_post)  # Using TESTWS instead of in-house TEST model
                         self.redis_conn.publish(sessionid, json.dumps(_results))
 
                 else:
@@ -415,8 +449,7 @@ class CTSTasks(QEDTasks):
                         _results = SparcCalc().data_request_handler(request_post)
                         self.redis_conn.publish(sessionid, json.dumps(_results))
 
-                    elif calc == 'test':
-                        # _results = TestCalc().data_request_handler(request_post)
-                        _results = TestWSCalc().data_request_handler(request_post)  # Using TESTWS instead of in-house TEST model
-                        print("Returning TESTWS results: {}".format(_results))
-                        self.redis_conn.publish(sessionid, json.dumps(_results))
+                    # elif calc == 'test':
+                    #     # _results = TestCalc().data_request_handler(request_post)
+                    #     _results = TestWSCalc().data_request_handler(request_post)  # Using TESTWS instead of in-house TEST model
+                    #     self.redis_conn.publish(sessionid, json.dumps(_results))
