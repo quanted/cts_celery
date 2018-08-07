@@ -154,16 +154,6 @@ def cheminfo_task(request_post):
         # TODO: Improve excpetion handling!!!
         logging.warning("exception in cheminfo_task: {}".format(ke))
         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
-    except Exception as e:
-        logging.warning("A general exception occurred!!")
-    # except celery.exceptions.TimeoutError as e:
-    #     logging.warning("Timeout excpetion occurred in cheminfo_task: {}".format(e))
-    # except celery.exceptions.TimeLimitExceeded as e:
-    #     logging.warning("@@@ Time limit exceeded!! ")
-    # except celery.exceptions.SoftTimeLimitExceeded as e:
-    #     logging.warning("@@@ Soft time limit exceeded!! ")
-    # except celery.exceptions.TaskRevokedError as e:
-    #     logging.warning("@@@ Task revoked error!!")
 
 @app.task
 def removeUserJobsFromQueue(sessionid):
