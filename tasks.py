@@ -108,15 +108,15 @@ def measured_task(request_post):
 @app.task
 def test_task(request_post):
     logging.info("celery worker consuming cts test (calc) task..")
-    try:
-        _task_obj = CTSTasks()
-        _task_obj.initiate_requests_parsing(request_post)
+    # try:
+    _task_obj = CTSTasks()
+    _task_obj.initiate_requests_parsing(request_post)
     except KeyError as ke:
         # TODO: Improve excpetion handling!!!
         logging.warning("exception in chemaxon_task: {}".format(ke))
         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
-    except celery.exceptions.TimeoutError as e:
-        logging.warning("Timeout excpetion occurred in test_task: {}".format(e))
+    # except celery.exceptions.TimeoutError as e:
+    #     logging.warning("Timeout excpetion occurred in test_task: {}".format(e))
 
 @app.task
 def sparc_task(request_post):
@@ -422,6 +422,12 @@ class CTSTasks(QEDTasks):
                 elif calc == 'test':
 
                     testws_calc = TestWSCalc()  # TODO: Change TEST to TheTEST (or TESTWS) to prevent future problems with testing libraries, etc.
+
+                    if prop == 'log_bcf':
+                        request_post['method'] = testws_calc.bcf_method
+                        _results = testws_calc.data_request_handler(request_post)
+                        self.redis_conn.publish(sessionid, json.dumps(_results))
+                        continue  # continues above loop, skips below for loop..
 
                     for method in testws_calc.methods:
                         # Makes requests for each TESTWS method available:
