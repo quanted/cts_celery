@@ -108,9 +108,9 @@ def measured_task(request_post):
 @app.task
 def test_task(request_post):
     logging.info("celery worker consuming cts test (calc) task..")
-    # try:
-    _task_obj = CTSTasks()
-    _task_obj.initiate_requests_parsing(request_post)
+    try:
+        _task_obj = CTSTasks()
+        _task_obj.initiate_requests_parsing(request_post)
     except KeyError as ke:
         # TODO: Improve excpetion handling!!!
         logging.warning("exception in chemaxon_task: {}".format(ke))
