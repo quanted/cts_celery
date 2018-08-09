@@ -424,10 +424,10 @@ class CTSTasks(QEDTasks):
                     testws_calc = TestWSCalc()  # TODO: Change TEST to TheTEST (or TESTWS) to prevent future problems with testing libraries, etc.
 
                     if prop == 'log_bcf':
+                        # Adds additional SM method for log_bcf property:
                         request_post['method'] = testws_calc.bcf_method
                         _results = testws_calc.data_request_handler(request_post)
                         self.redis_conn.publish(sessionid, json.dumps(_results))
-                        continue  # continues above loop, skips below for loop..
 
                     for method in testws_calc.methods:
                         # Makes requests for each TESTWS method available:
