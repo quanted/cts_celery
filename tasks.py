@@ -377,7 +377,7 @@ class CTSTasks(QEDTasks):
 
             if not isinstance(_results.get('data'), list):
                 self.redis_conn.publish(sessionid, json.dumps({
-                    'data': "cannot reach epi",
+                    'data': "Cannot reach EPI",
                     'prop': _response_info.get('prop'),
                     'calc': "epi"})
                 )
