@@ -2,7 +2,6 @@
 :: Jun. 2016; np
 
 :: Filename for .env to use when running celery workers:
-rem set env_filename=%1
 
 rem echo .env Filename
 rem echo env_filename
