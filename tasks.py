@@ -17,14 +17,11 @@ from temp_config.set_environment import DeployEnv
 runtime_env = DeployEnv()
 runtime_env.load_deployment_environment()
 
-# <<<<<<< HEAD
 # if not os.environ.get('DJANGO_SETTINGS_FILE'):
 #     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'qed_cts.settings_outside')
 # else:
 #     # os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')  # loads faux django settings so celery can use django lib for templating
-# =======
-# >>>>>>> 8c964804df84d4b9e8e424d12a1953d725ef830a
 
 from cts_calcs.calculator_chemaxon import JchemCalc
 from cts_calcs.calculator_sparc import SparcCalc
@@ -61,110 +58,15 @@ app.conf.update(
 ##### THE TASKS ##################################################
 ##################################################################
 
-# @app.task
-# <<<<<<< HEAD
-# def chemaxon_task(request_post):
-#     logging.info("celery worker consuming cts chemaxon task..")
-#     try:
-#         _task_obj = CTSTasks()
-#         _task_obj.initiate_requests_parsing(request_post)
-#     except KeyError as ke:
-#         # TODO: Improve excpetion handling!!!
-#         logging.warning("exception in chemaxon_task: {}".format(ke))
-#         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
-#     except celery.exceptions.TimeoutError as e:
-#         logging.warning("Timeout excpetion occurred in chemaxon_task: {}".format(e))
-
-
-# @app.task
-# def epi_task(request_post):
-#     logging.info("celery worker consuming cts epi task..")
-#     try:
-#         _task_obj = CTSTasks()
-#         _task_obj.initiate_requests_parsing(request_post)
-#     except KeyError as ke:
-#         # TODO: Improve excpetion handling!!!
-#         logging.warning("exception in chemaxon_task: {}".format(ke))
-#         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
-#     except celery.exceptions.TimeoutError as e:
-#         logging.warning("Timeout excpetion occurred in epi_task: {}".format(e))
-
-# @app.task
-# def measured_task(request_post):
-#     logging.info("celery worker consuming cts measured task..")
-#     try:
-#         _task_obj = CTSTasks()
-#         _task_obj.initiate_requests_parsing(request_post)
-#     except KeyError as ke:
-#         # TODO: Improve excpetion handling!!!
-#         logging.warning("exception in chemaxon_task: {}".format(ke))
-#         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
-#     except celery.exceptions.TimeoutError as e:
-#         logging.warning("Timeout excpetion occurred in measured_task: {}".format(e))
-
-# @app.task
-# def test_task(request_post):
-#     logging.info("celery worker consuming cts test (calc) task..")
-#     try:
-#         _task_obj = CTSTasks()
-#         _task_obj.initiate_requests_parsing(request_post)
-#     except KeyError as ke:
-#         # TODO: Improve excpetion handling!!!
-#         logging.warning("exception in chemaxon_task: {}".format(ke))
-#         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
-#     # except celery.exceptions.TimeoutError as e:
-#     #     logging.warning("Timeout excpetion occurred in test_task: {}".format(e))
-
-# @app.task
-# def sparc_task(request_post):
-#     logging.info("celery worker consuming cts sparc task..")
-#     try:
-#         _task_obj = CTSTasks()
-#         _task_obj.initiate_requests_parsing(request_post)
-#     except KeyError as ke:
-#         # TODO: Improve excpetion handling!!!
-#         logging.warning("exception in chemaxon_task: {}".format(ke))
-#         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
-#     except celery.exceptions.TimeoutError as e:
-#         logging.warning("Timeout excpetion occurred in sparc_task: {}".format(e))
-
-# @app.task
-# def metabolizer_task(request_post):
-#     logging.info("celery worker consuming cts metabolizer task..")
-#     try:
-#         _task_obj = CTSTasks()
-#         _task_obj.initiate_requests_parsing(request_post)
-#     except KeyError as ke:
-#         # TODO: Improve excpetion handling!!!
-#         logging.warning("exception in chemaxon_task: {}".format(ke))
-#         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
-#     except celery.exceptions.TimeoutError as e:
-#         logging.warning("Timeout excpetion occurred in metabolizer_task: {}".format(e))
-
-# @app.task
-# def cheminfo_task(request_post):
-#     logging.info("celery worker consuming cts cheminfo task..")
-#     try:
-#         _task_obj = CTSTasks()
-#         _task_obj.initiate_requests_parsing(request_post)
-#     except KeyError as ke:
-#         # TODO: Improve excpetion handling!!!
-#         logging.warning("exception in cheminfo_task: {}".format(ke))
-#         raise KeyError("Request to calc task needs 'calc' and 'service' keys")
-
-# =======
 @app.task
 def cts_task(request_post):
 	try:
-		cts_task = CTSTasks()
-		sessionid = request_post.get('sessionid')
-		results = cts_task.send_request_to_calcs(sessionid, request_post)
-		cts_task.publish_results_to_redis(sessionid, results)
+		task_obj = CTSTasks()
+		task_obj.initiate_requests_parsing(request_post)
 	except Exception as e:
 		logging.warning("Error in cts_task: {}".format(e))
 		results = cts_task.build_error_obj(request_post, 'error')  # generic error
 		cts_task.redis_conn.publish(sessionid, json.dumps(results))
-# >>>>>>> 8c964804df84d4b9e8e424d12a1953d725ef830a
 
 @app.task
 def removeUserJobsFromQueue(sessionid):
@@ -187,479 +89,319 @@ def test_celery(sessionid, message):
 ##################################################################
 
 class QEDTasks(object):
+	"""
+	Suggested main class for task related things.
+	Anything similar across all apps for task handling
+	could go here.
 
-# dev branch
-# <<<<<<< HEAD
-    """
-    Suggested main class for task related things.
-    Anything similar across all apps for task handling
-    could go here.
+	NOTE: Current setup requires redis host and port to instantiate
+	"""
+	def __init__(self):
+		REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME', 'localhost')
+		REDIS_PORT = os.environ.get('REDIS_PORT', 6379)
+		self.redis_conn = redis.StrictRedis(host=REDIS_HOSTNAME, port=REDIS_PORT, db=0)
 
-    NOTE: Current setup requires redis host and port to instantiate
-    """
-    def __init__(self):
-        REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME', 'localhost')
-        REDIS_PORT = os.environ.get('REDIS_PORT', 6379)
-        self.redis_conn = redis.StrictRedis(host=REDIS_HOSTNAME, port=REDIS_PORT, db=0)
+	def remove_redis_jobs(self, sessionid):
+		"""
+		Removes the job IDs stored in redis after
+		a user is finished with them
+		"""
+		try:
+			# user_jobs_json = self.redis_conn.get(sessionid)  # all user's jobs
+			user_jobs_list = self.redis_conn.lrange(sessionid, 0, -1)
+			logging.info("user's jobs: {}".format(user_jobs_list))
+			if user_jobs_list:
+				self.redis_conn.delete(sessionid)  # remove key:vals from user
+			return True
+		except Exception as e:
+			raise e
 
-    def remove_redis_jobs(self, sessionid):
-        """
-        Removes the job IDs stored in redis after
-        a user is finished with them
-        """
-        try:
-            # user_jobs_json = self.redis_conn.get(sessionid)  # all user's jobs
-            user_jobs_list = self.redis_conn.lrange(sessionid, 0, -1)
-            logging.info("user's jobs: {}".format(user_jobs_list))
-            if user_jobs_list:
-                self.redis_conn.delete(sessionid)  # remove key:vals from user
-            return True
-        except Exception as e:
-            raise e
+	def revoke_queued_jobs(self, sessionid):
+		"""
+		Revokes jobs yet started on the worker queues.
+		Happens if user hits "cancel" or leaves page while
+		requesting data, and is meant to prevent the queues 
+		from clogging up with requests.
+		"""
+		# user_jobs_list = self.redis_conn.get(sessionid)  # get user's job id list
+		user_jobs_list = self.redis_conn.lrange(sessionid, 0, -1)
+		logging.info("User {}'s JOBS: {}".format(sessionid, user_jobs_list))
+		
+		if not user_jobs_list:
+			logging.warning("No user jobs, moving on..")
+			return
 
-    def revoke_queued_jobs(self, sessionid):
-        """
-        Revokes jobs yet started on the worker queues.
-        Happens if user hits "cancel" or leaves page while
-        requesting data, and is meant to prevent the queues 
-        from clogging up with requests.
-        """
-        # user_jobs_list = self.redis_conn.get(sessionid)  # get user's job id list
-        user_jobs_list = self.redis_conn.lrange(sessionid, 0, -1)
-        logging.info("User {}'s JOBS: {}".format(sessionid, user_jobs_list))
-        
-        if not user_jobs_list:
-            logging.warning("No user jobs, moving on..")
-            return
-
-        for job_id in user_jobs_list:
-            logging.info("Revoking job {}..".format(job_id))
-            revoke(job_id, terminate=True)  # stop user job
-            logging.info("Job {} revoked!".format(job_id))
-
-        # logging.debug("Sending status message to user that jobs have been canceled..")
-        # error_msg = {
-        #     'cancelRequest': True
-        # }
-        # self.redis_conn.publish(sessionid, json.dumps(error_msg))
-
-# worker branch
-# =======
-# 	"""
-# 	Suggested main class for task related things.
-# 	Anything similar across all apps for task handling
-# 	could go here.
-
-# 	NOTE: Current setup requires redis host and port to instantiate
-# 	"""
-# 	def __init__(self):
-# 		REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME', 'localhost')
-# 		REDIS_PORT = os.environ.get('REDIS_PORT', 6379)
-# 		self.redis_conn = redis.StrictRedis(host=REDIS_HOSTNAME, port=REDIS_PORT, db=0)
-
-# 	def remove_redis_jobs(self, sessionid):
-# 		"""
-# 		Removes the job IDs stored in redis after
-# 		a user is finished with them
-# 		"""
-# 		try:
-# 			user_jobs_json = self.redis_conn.get(sessionid)  # all user's jobs
-# 			logging.info("user's jobs: {}".format(user_jobs_json))
-# 			if user_jobs_json:
-# 				self.redis_conn.delete(sessionid)  # remove key:vals from user
-# 			return True
-# 		except Exception as e:
-# 			raise e
-
-# 	def revoke_queued_jobs(self, sessionid):
-# 		"""
-# 		Revokes jobs yet started on the worker queues.
-# 		Happens if user hits "cancel" or leaves page while
-# 		requesting data, and is meant to prevent the queues 
-# 		from clogging up with requests.
-# 		"""
-# 		user_jobs_json = self.redis_conn.get(sessionid)
-# 		logging.info("{} JOBS: {}".format(sessionid, user_jobs_json))
-# 		if not user_jobs_json:
-# 			logging.info("no user jobs, moving on..")
-# 			return
-# 		user_jobs = json.loads(user_jobs_json)
-# 		for job_id in user_jobs['jobs']:
-# 			logging.info("revoking job {}".format(job_id))
-# 			revoke(job_id, terminate=True)  # stop user job
-# 			logging.info("revoked {} job".format(job_id))
-# 		self.redis_conn.publish(sessionid, json.dumps({'status': "p-chem data request canceled"}))
-# >>>>>>> 8c964804df84d4b9e8e424d12a1953d725ef830a
-
+		for job_id in user_jobs_list:
+			logging.info("Revoking job {}..".format(job_id))
+			revoke(job_id, terminate=True)  # stop user job
+			logging.info("Job {} revoked!".format(job_id))
 
 
 
 class CTSTasks(QEDTasks):
+	"""
+	General class for cts tasks to call,
+	and keeping tasks as single-level functions
+	for now. Seems like the Task class has changed
+	from celery 3 to 4 (http://docs.celeryproject.org/en/latest/whatsnew-4.0.html)
+	"""
+	def __init__(self):
+		QEDTasks.__init__(self)
+
+
+
+	def build_error_obj(self, request_post, error_message):
+		default_error_obj = {
+			'chemical': request_post['chemical'],
+			'calc': request_post['calc'],
+			'prop': request_post['prop'],
+			'data': error_message
+		}
+		return default_error_obj
+
+
+	def initiate_requests_parsing(self, request_post):
+		"""
+		Checks if request is single chemical or list of chemicals, then 
+		parses request up to fill worker queues w/ single chemical requests.
+		This was originally structured this way because revoking celery work
+		seems to only be successful for jobs not yet started.
+
+		It accounts for the case of a user requesting data for many chemicals
+		(single job), then leaving page; the celery workers would continue processing
+		that job despite the user not being there :(
+		"""
+		logging.info("Request post coming into cts_task: {}".format(request_post))
+		if 'nodes' in request_post:
+			for node in request_post['nodes']:
+				request_post['node'] = node
+				request_post['chemical'] = node['smiles']
+				request_post['mass'] = node['mass']
+				jobID = self.parse_by_service(request_post.get('sessionid'), request_post)
+		else:
+			jobID = self.parse_by_service(request_post.get('sessionid'), request_post)
+
+
+	def parse_by_service(self, sessionid, request_post):
+		"""
+		Further parsing of user request.
+		Checks if 'service', if not it assumes p-chem request
+		TODO: at 'pchem' service instead of assuming..
 
-# dev branch
-# <<<<<<< HEAD
-    """
-    General class for cts tasks to call,
-    and keeping tasks as single-level functions
-    for now. Seems like the Task class has changed
-    from celery 3 to 4 (http://docs.celeryproject.org/en/latest/whatsnew-4.0.html)
-    """
-    def __init__(self):
-        QEDTasks.__init__(self)
-
-
-    def initiate_requests_parsing(self, request_post):
-        """
-        Checks if request is single chemical or list of chemicals, then 
-        parses request up to fill worker queues w/ single chemical requests.
-        This was originally structured this way because revoking celery work
-        seems to only be successful for jobs not yet started.
-
-        It accounts for the case of a user requesting data for many chemicals
-        (single job), then leaving page; the celery workers would continue processing
-        that job despite the user not being there :(
-        """
-        logging.info("Request post coming into cts_task: {}".format(request_post))
-        if 'nodes' in request_post:
-            for node in request_post['nodes']:
-                request_post['node'] = node
-                request_post['chemical'] = node['smiles']
-                request_post['mass'] = node['mass']
-                jobID = self.parse_by_service(request_post.get('sessionid'), request_post)
-        else:
-            jobID = self.parse_by_service(request_post.get('sessionid'), request_post)
-
-
-    def parse_by_service(self, sessionid, request_post):
-        """
-        Further parsing of user request.
-        Checks if 'service', if not it assumes p-chem request
-        TODO: at 'pchem' service instead of assuming..
-
-        Output: Returns nothing, pushes to redis (may not stay this way)
-        """
-        request_post['sessionid'] = sessionid
-
-        if request_post.get('service') == 'getSpeciationData':
-            logging.info("celery worker consuming chemaxon task")
-            _results = JchemCalc().data_request_handler(request_post)
-            self.redis_conn.publish(sessionid, json.dumps(_results))
-
-        elif (request_post.get('service') == 'getTransProducts'):
-            logging.info("celery worker consuming metabolizer task")
-            _results = MetabolizerCalc().data_request_handler(request_post)
-            self.redis_conn.publish(sessionid, json.dumps(_results))
-
-        elif (request_post.get('service') == 'getChemInfo'):
-            logging.info("celery worker consuming cheminfo task")
-            # _results = getChemInfo(request_post)
-            _results = ChemInfo().get_cheminfo(request_post)
-            self.redis_conn.publish(sessionid, json.dumps(_results))
-        else:
-            self.parse_pchem_request(sessionid, request_post)
-
-        return
-
-
-    def parse_pchem_request(self, sessionid, request_post):
-        """
-        This function loops a user's p-chem request and parses
-        the work by calculator.
-
-        Output: Returns nothing, pushes to redis (may not stay this way, instead
-        the redis pushing may be handled at the task function level).
-        """
-
-        calc = request_post['calc']
-        props = request_post['pchem_request'][calc]
-
-        if calc == 'measured':
-            measured_calc = MeasuredCalc()
-            _results = measured_calc.data_request_handler(request_post)
-            _results['calc'] == calc
-            _returned_props = []  # keeping track of any missing prop data that was requested
-
-            # check if results are valid:
-            if not _results.get('valid'):
-                # not valid, send error message in place of data for requested props..
-                for measured_prop in request_post.get('pchem_request', {}).get('measured', []):
-                    logging.debug("Sending {} back".format(measured_prop))
-                    _results['prop'] = measured_prop
-                    self.redis_conn.publish(sessionid, json.dumps(_results))
-                return
-
-            if 'error' in _results:
-                for prop in props:
-                    _results.update({'prop': prop, 'data': _results.get('error')})
-                    self.redis_conn.publish(sessionid, json.dumps(_results))
-                return
-
-            for _data_obj in _results.get('data'):
-                for prop in props:
-                    # looping user-selected props (cts named props):
-                    if _data_obj['prop'] == measured_calc.propMap[prop]['result_key']:
-                        _results.update({'prop': prop, 'data': _data_obj.get('data')})
-                        self.redis_conn.publish(sessionid, json.dumps(_results))
-                        _returned_props.append(prop)
-
-            # Check for any missing prop data that user requested..
-            _diff_set = set(_returned_props)^set(props)
-            for missing_prop in _diff_set:
-                logging.warning("{} missing from Measured response..".format(missing_prop))
-                _results.update({'prop': missing_prop, 'data': "N/A"})
-                self.redis_conn.publish(sessionid, json.dumps(_results))  # push up as "N/A"
-
-        elif calc == 'epi':
-
-            epi_calc = EpiCalc()
-
-            epi_props_list = request_post.get('pchem_request', {}).get('epi', [])
-
-            if 'water_sol' in epi_props_list or 'vapor_press' in epi_props_list:
-                request_post['prop'] = 'water_sol'  # trigger cts epi calc to get MP for epi request
-
-            _results = epi_calc.data_request_handler(request_post)
-            _response_info = {}
-
-            # check if results are valid:
-            if not _results.get('valid'):
-                # not valid, send error message in place of data for requested props..
-                for epi_prop in request_post.get('pchem_request', {}).get('epi', []):
-                    logging.debug("Sending {} back".format(epi_prop))
-                    _results['prop'] = epi_prop
-                    self.redis_conn.publish(sessionid, json.dumps(_results))
-                return
-
-            # key:vals to add to response data objects:
-            for key, val in _results.items():
-                if not key == 'data':
-                    _response_info[key] = val
-
-            if not isinstance(_results.get('data'), list):
-                self.redis_conn.publish(sessionid, json.dumps({
-                    'data': "Cannot reach EPI",
-                    'prop': _response_info.get('prop'),
-                    'calc': "epi"})
-                )
-                return
-
-            for _data_obj in _results.get('data', []):
-                _epi_prop = _data_obj.get('prop')
-                _cts_prop_name = epi_calc.props[epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
-                _method = _data_obj.get('method')
-
-                if _method:
-                    # Use abbreviated method name for pchem table:
-                    _epi_methods = epi_calc.propMap.get(_cts_prop_name).get('methods', {})
-                    _method = _epi_methods.get(_data_obj['method'])  # use pchem table name for method
-
-                if _cts_prop_name in props:
-                    _data_obj.update(_response_info)  # data obj going to client needs some extra keys
-                    _data_obj['prop'] = _cts_prop_name
-                    _data_obj['method'] = _method
-
-                    self.redis_conn.publish(sessionid, json.dumps(_data_obj))
-
-        else:
-
-            for prop_index in range(0, len(props)):
-
-                prop = props[prop_index]
-                request_post['prop'] = prop
-
-                is_chemaxon = calc == 'chemaxon'
-                is_kow = prop == 'kow_no_ph' or prop == 'kow_wph'
-                if is_chemaxon and is_kow:
-
-                    chemaxon_calc = JchemCalc()
-
-                    # Making request for each method (required by jchem ws):
-                    for i in range(0, len(chemaxon_calc.methods)):
-                        request_post['method'] = chemaxon_calc.methods[i]
-                        _results = chemaxon_calc.data_request_handler(request_post)
-                        self.redis_conn.publish(sessionid, json.dumps(_results))
-
-                elif calc == 'test':
-
-                    testws_calc = TestWSCalc()  # TODO: Change TEST to TheTEST (or TESTWS) to prevent future problems with testing libraries, etc.
-
-                    if prop == 'log_bcf':
-                        # Adds additional SM method for log_bcf property:
-                        request_post['method'] = testws_calc.bcf_method
-                        _results = testws_calc.data_request_handler(request_post)
-                        self.redis_conn.publish(sessionid, json.dumps(_results))
-
-                    for method in testws_calc.methods:
-                        # Makes requests for each TESTWS method available:
-                        request_post['method'] = method
-                        _results = testws_calc.data_request_handler(request_post)  # Using TESTWS instead of in-house TEST model
-                        self.redis_conn.publish(sessionid, json.dumps(_results))
-
-                else:
-
-                    if calc == 'chemaxon':
-                        _results = JchemCalc().data_request_handler(request_post)
-                        self.redis_conn.publish(sessionid, json.dumps(_results))
-
-                    elif calc == 'sparc':
-                        _results = SparcCalc().data_request_handler(request_post)
-                        self.redis_conn.publish(sessionid, json.dumps(_results))
-
-                    # elif calc == 'test':
-                    #     # _results = TestCalc().data_request_handler(request_post)
-                    #     _results = TestWSCalc().data_request_handler(request_post)  # Using TESTWS instead of in-house TEST model
-                    #     self.redis_conn.publish(sessionid, json.dumps(_results))
-
-
-# worker branch (probably wrong at this point)
-# =======
-# 	"""
-# 	General class for cts tasks to call,
-# 	and keeping tasks as single-level functions
-# 	for now. Seems like the Task class has changed
-# 	from celery 3 to 4 (http://docs.celeryproject.org/en/latest/whatsnew-4.0.html)
-# 	"""
-# 	def __init__(self):
-# 		QEDTasks.__init__(self)
-# 		self.calcs_multi_request = ['chemaxon', 'sparc', 'test', 'cheminfo', 'metabolizer']  # calcs w/ 1 request/prop
-# 		self.calcs_single_request = ['epi', 'measured']  # calcs where 1 request returns all props
-
-# 	def build_error_obj(self, request_post, error_message):
-# 		default_error_obj = {
-# 			'chemical': request_post['chemical'],
-# 			'calc': request_post['calc'],
-# 			'prop': request_post['prop'],
-# 			'data': error_message
-# 		}
-# 		return default_error_obj
-
-# 	def send_request_to_calcs(self, sessionid, request_post):
-# 		"""
-# 		Further parsing of user request.
-# 		Checks if 'service', if not it assumes p-chem request
-# 		TODO: at 'pchem' service instead of assuming..
-
-# 		Output: Returns nothing, pushes to redis (may not stay this way)
-# 		"""
-# 		request_post['sessionid'] = sessionid
-
-# 		if request_post.get('service') == 'getSpeciationData':
-# 			logging.info("celery worker consuming chemaxon task")
-# 			_results = JchemCalc().data_request_handler(request_post)
-# 			return _results
-
-# 		elif (request_post.get('service') == 'getTransProducts'):
-# 			logging.info("celery worker consuming metabolizer task")
-# 			_results = MetabolizerCalc().data_request_handler(request_post)
-# 			return _results
-
-# 		elif (request_post.get('service') == 'getChemInfo'):
-# 			logging.info("celery worker consuming cheminfo task")
-# 			_results = ChemInfo().get_cheminfo(request_post)
-# 			return _results
-# 		else:
-# 			return self.parse_pchem_request(sessionid, request_post)
-
-# 	def parse_pchem_request(self, sessionid, request_post):
-# 		"""
-# 		Parse request up by calculator.
-# 		Returns calc results.
-# 		"""
-# 		calc = request_post['calc']
-# 		props = request_post['pchem_request'][calc]
-
-# 		if calc == 'chemaxon':
-# 			return JchemCalc().data_request_handler(request_post)
-
-# 		elif calc == 'sparc':
-# 			return SparcCalc().data_request_handler(request_post)
-
-# 		elif calc == 'test':
-# 			return TestCalc().data_request_handler(request_post)
-
-# 		elif calc == 'measured':
-# 			_results = MeasuredCalc().data_request_handler(request_post)
-# 			_results['calc'] == calc
-# 			return _results
-
-# 		elif calc == 'epi':
-# 			epi_props_list = request_post.get('pchem_request', {}).get('epi', [])
-# 			if 'water_sol' in epi_props_list or 'vapor_press' in epi_props_list:
-# 				request_post['prop'] = 'water_sol'  # trigger cts epi calc to get MP for epi request
-# 			_results = EpiCalc().data_request_handler(request_post)
-# 			_results['calc'] = calc
-# 			return _results
-
-# 	def publish_results_to_redis(self, sessionid, results):
-# 		"""
-# 		Sends results to client via publishing to redis, which
-# 		gets picked up by nodejs, which ultimately pushes to client.
-# 		"""
-# 		logging.info("RESULTS: {}".format(results))
-# 		_calc = results.get('calc')
-
-# 		logging.info("CALC: {}".format(_calc))
-
-# 		if _calc in self.calcs_multi_request:
-# 			logging.info("Publishing results to redis..")
-# 			self.redis_conn.publish(sessionid, json.dumps(results))  # calcs with 1 request per property..
-# 		elif _calc == 'epi':
-# 			self.parse_and_publish_epi(sessionid, results)
-# 		elif _calc == 'measured':
-# 			self.parse_and_publish_measured(sessionid, results)
-
-# 	def parse_and_publish_epi(self, sessionid, results):
-# 		"""
-# 		Parse up EPI results and publish them to redis.
-# 		"""
-# 		_response_info = {}
-
-# 		 # key:vals to add to response data objects:
-# 		for key, val in results.items():
-# 			if not key == 'data':
-# 				_response_info[key] = val
-
-# 		for _data_obj in results.get('data', []):
-# 			_epi_prop = _data_obj.get('prop')
-# 			_cts_prop_name = epi_calc.props[epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
-
-# 			_method = None
-# 			if _data_obj['prop'] == 'water_solubility':
-# 				_method = _data_obj['method']
-
-# 			if _cts_prop_name in props:
-# 				_data_obj.update(_response_info)  # data obj going to client needs some extra keys
-# 				_data_obj['prop'] = _cts_prop_name
-				
-# 				if _method:
-# 					_data_obj['method'] = _method
-
-# 				self.redis_conn.publish(sessionid, json.dumps(_data_obj))
-
-# 	def parse_and_publish_measured(self, sessionid, results):
-# 		"""
-# 		Parses up Measured results and publishes them to redis.
-# 		"""
-# 		_returned_props = []  # keeping track of any missing prop data that was requested
-
-# 		if 'error' in results:
-# 			for prop in props:
-# 				results.update({'prop': prop, 'data': results.get('error')})
-# 				self.redis_conn.publish(sessionid, json.dumps(results))
-# 			# return
-
-# 		for _data_obj in results.get('data'):
-# 			for prop in props:
-# 				# looping user-selected props (cts named props):
-# 				if _data_obj['prop'] == measured_calc.propMap[prop]['result_key']:
-# 					results.update({'prop': prop, 'data': _data_obj.get('data')})
-# 					self.redis_conn.publish(sessionid, json.dumps(results))
-# 					_returned_props.append(prop)
-
-# 		# Check for any missing prop data that user requested..
-# 		_diff_set = set(_returned_props)^set(props)
-# 		for missing_prop in _diff_set:
-# 			logging.warning("{} missing from Measured response..".format(missing_prop))
-# 			results.update({'prop': missing_prop, 'data': "N/A"})
-# 			self.redis_conn.publish(sessionid, json.dumps(results))  # push up as "N/A"
-# >>>>>>> 8c964804df84d4b9e8e424d12a1953d725ef830a
+		Output: Returns nothing, pushes to redis (may not stay this way)
+		"""
+		request_post['sessionid'] = sessionid
+
+		if request_post.get('service') == 'getSpeciationData':
+			logging.info("celery worker consuming chemaxon task")
+			_results = JchemCalc().data_request_handler(request_post)
+			self.redis_conn.publish(sessionid, json.dumps(_results))
+
+		elif (request_post.get('service') == 'getTransProducts'):
+			logging.info("celery worker consuming metabolizer task")
+			_results = MetabolizerCalc().data_request_handler(request_post)
+			self.redis_conn.publish(sessionid, json.dumps(_results))
+
+		elif (request_post.get('service') == 'getChemInfo'):
+			logging.info("celery worker consuming cheminfo task")
+			# _results = getChemInfo(request_post)
+			_results = ChemInfo().get_cheminfo(request_post)
+			self.redis_conn.publish(sessionid, json.dumps(_results))
+		else:
+			self.parse_pchem_request_by_calc(sessionid, request_post)
+
+		return
+
+
+	def parse_pchem_request_by_calc(self, sessionid, request_post):
+		"""
+		This function loops a user's p-chem request and parses
+		the work by calculator.
+
+		Output: Returns nothing, pushes to redis (may not stay this way, instead
+		the redis pushing may be handled at the task function level).
+		"""
+
+		calc = request_post['calc']
+		# props = request_post['pchem_request'][calc]
+
+		if calc == 'measured':
+			self.handle_measured_request(sessionid, request_post)
+
+		elif calc == 'epi':
+			self.handle_epi_request(sessionid, request_post)
+
+		else:
+
+			props = request_post['pchem_request'][calc]
+
+			# Makes a request per property (and per method if they exist) to
+			# the remaining calculators (testws, chemaxon, sparc).
+			for prop_index in range(0, len(props)):
+
+				# Sets 'prop' key for making request to calculator:
+				prop = props[prop_index]
+				request_post['prop'] = prop
+
+				if calc == 'test':
+					self.handle_testws_request(sessionid, request_post)
+
+				elif calc == 'chemaxon':
+					self.handle_chemaxon_request(sessionid, request_post)
+
+				elif calc == 'sparc':
+					self.handle_sparc_request(sessionid, request_post)
+
+
+
+	def handle_chemaxon_request(self, sessionid, request_post):
+		"""
+		Handles ChemAxon calculator p-chem requests, one p-chem
+		property at a time.
+		"""
+		chemaxon_calc = JchemCalc()
+
+		is_kow = prop == 'kow_no_ph' or prop == 'kow_wph'  # kow has 3 methods
+		if is_kow:
+			# Making request for each method (required by jchem ws):
+			for i in range(0, len(chemaxon_calc.methods)):
+				request_post['method'] = chemaxon_calc.methods[i]
+				_results = chemaxon_calc.data_request_handler(request_post)
+				self.redis_conn.publish(sessionid, json.dumps(_results))
+
+		else:
+			# All other chemaxon properties have single method:
+			_results = chemaxon_calc.data_request_handler(request_post)
+			self.redis_conn.publish(sessionid, json.dumps(_results))
+
+
+
+	def handle_sparc_request(self, sessionid, request_post):
+		"""
+		Handles SPARC calculator p-chem requests, one p-chem
+		property at a time.
+		"""
+		_results = SparcCalc().data_request_handler(request_post)
+		self.redis_conn.publish(sessionid, json.dumps(_results))
+
+
+
+	def handle_testws_request(self, sessionid, request_post):
+		"""
+		Handles TESTWS calculator p-chem requests, which have 3
+		methods for each property, except log_bcf which has 4 methods.
+		"""
+		testws_calc = TestWSCalc()  # TODO: Change TEST to TheTEST (or TESTWS) to prevent future problems with testing libraries, etc.
+
+		if prop == 'log_bcf':
+			# Adds additional SM method for log_bcf property:
+			request_post['method'] = testws_calc.bcf_method
+			_results = testws_calc.data_request_handler(request_post)
+			self.redis_conn.publish(sessionid, json.dumps(_results))
+
+		for method in testws_calc.methods:
+			# Makes requests for each TESTWS method available:
+			request_post['method'] = method
+			_results = testws_calc.data_request_handler(request_post)  # Using TESTWS instead of in-house TEST model
+			self.redis_conn.publish(sessionid, json.dumps(_results))
+
+
+
+	def handle_measured_request(self, sessionid, request_post):
+		"""
+		Handles Measured calculator p-chem requests. For Measured,
+		a single request returns data for all properties, and some of
+		those properties have methods.
+		"""
+		measured_calc = MeasuredCalc()
+		_results = measured_calc.data_request_handler(request_post)
+		_results['calc'] == "measured"
+		props = request_post['pchem_request']['measured']  # requested properties for measured
+		_returned_props = []  # keeping track of any missing prop data that was requested
+
+		# check if results are valid:
+		if not _results.get('valid'):
+			# not valid, send error message in place of data for requested props..
+			for measured_prop in request_post.get('pchem_request', {}).get('measured', []):
+				logging.debug("Sending {} back".format(measured_prop))
+				_results['prop'] = measured_prop
+				self.redis_conn.publish(sessionid, json.dumps(_results))
+			return
+
+		if 'error' in _results:
+			for prop in props:
+				_results.update({'prop': prop, 'data': _results.get('error')})
+				self.redis_conn.publish(sessionid, json.dumps(_results))
+			return
+
+		for _data_obj in _results.get('data'):
+			for prop in props:
+				# looping user-selected props (cts named props):
+				if _data_obj['prop'] == measured_calc.propMap[prop]['result_key']:
+					_results.update({'prop': prop, 'data': _data_obj.get('data')})
+					self.redis_conn.publish(sessionid, json.dumps(_results))
+					_returned_props.append(prop)
+
+		# Check for any missing prop data that user requested..
+		_diff_set = set(_returned_props)^set(props)
+		for missing_prop in _diff_set:
+			logging.warning("{} missing from Measured response..".format(missing_prop))
+			_results.update({'prop': missing_prop, 'data': "N/A"})
+			self.redis_conn.publish(sessionid, json.dumps(_results))  # push up as "N/A"
+
+
+
+	def handle_epi_request(self, sessionid, request_post):
+		"""
+		Handles EPI calculator p-chem requests. For EPI,
+		a single request returns data for all properties, and
+		some of those properties have multiple methods.
+		"""
+		epi_calc = EpiCalc()
+		epi_props_list = request_post.get('pchem_request', {}).get('epi', [])  # available epi props
+		props = request_post['pchem_request']['epi']  # user's requested epi props
+
+		if 'water_sol' in epi_props_list or 'vapor_press' in epi_props_list:
+			request_post['prop'] = 'water_sol'  # trigger cts epi calc to get MP for epi request
+
+		_results = epi_calc.data_request_handler(request_post)
+		_response_info = {}
+
+		# check if results are valid:
+		if not _results.get('valid'):
+			# not valid, send error message in place of data for requested props..
+			for epi_prop in request_post.get('pchem_request', {}).get('epi', []):
+				logging.debug("Sending {} back".format(epi_prop))
+				_results['prop'] = epi_prop
+				self.redis_conn.publish(sessionid, json.dumps(_results))
+			return
+
+		# key:vals to add to response data objects:
+		for key, val in _results.items():
+			if not key == 'data':
+				_response_info[key] = val
+
+		if not isinstance(_results.get('data'), list):
+			self.redis_conn.publish(sessionid, json.dumps({
+				'data': "Cannot reach EPI",
+				'prop': _response_info.get('prop'),
+				'calc': "epi"})
+			)
+			return
+
+		for _data_obj in _results.get('data', []):
+			_epi_prop = _data_obj.get('prop')
+			_cts_prop_name = epi_calc.props[epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
+			_method = _data_obj.get('method')
+
+			if _method:
+				# Use abbreviated method name for pchem table:
+				_epi_methods = epi_calc.propMap.get(_cts_prop_name).get('methods', {})
+				_method = _epi_methods.get(_data_obj['method'])  # use pchem table name for method
+
+			if _cts_prop_name in props:
+				_data_obj.update(_response_info)  # data obj going to client needs some extra keys
+				_data_obj['prop'] = _cts_prop_name
+				_data_obj['method'] = _method
+
+				self.redis_conn.publish(sessionid, json.dumps(_data_obj))
