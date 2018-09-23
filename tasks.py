@@ -65,8 +65,8 @@ def cts_task(request_post):
 		task_obj.initiate_requests_parsing(request_post)
 	except Exception as e:
 		logging.warning("Error in cts_task: {}".format(e))
-		results = cts_task.build_error_obj(request_post, 'error')  # generic error
-		cts_task.redis_conn.publish(sessionid, json.dumps(results))
+		task_obj.build_error_obj(request_post, 'error')  # generic error
+		# task_obj.redis_conn.publish(request_post.get('sessionid'), json.dumps(results))
 
 @app.task
 def removeUserJobsFromQueue(sessionid):
@@ -151,13 +151,30 @@ class CTSTasks(QEDTasks):
 
 
 	def build_error_obj(self, request_post, error_message):
-		default_error_obj = {
-			'chemical': request_post['chemical'],
-			'calc': request_post['calc'],
-			'prop': request_post['prop'],
-			'data': error_message
-		}
-		return default_error_obj
+
+		logging.warning("REQUEST POST coming into error build: {}".format(request_post))
+
+		if request_post.get('prop'):
+			default_error_obj = {
+				'chemical': request_post['chemical'],
+				'calc': request_post['calc'],
+				'prop': request_post['prop'],
+				'data': error_message
+			}
+			# return default_error_obj
+			self.redis_conn.publish(request_post['sessionid'], json.dumps(default_error_obj))
+
+		elif 'props' in request_post:
+			for prop in request_post['props']:
+				default_error_obj = {
+					'chemical': request_post['chemical'],
+					'calc': request_post['calc'],
+					'prop': prop,
+					'data': error_message
+				}
+				self.redis_conn.publish(request_post['sessionid'], json.dumps(default_error_obj))
+
+
 
 
 	def initiate_requests_parsing(self, request_post):
@@ -221,9 +238,7 @@ class CTSTasks(QEDTasks):
 		Output: Returns nothing, pushes to redis (may not stay this way, instead
 		the redis pushing may be handled at the task function level).
 		"""
-
 		calc = request_post['calc']
-		# props = request_post['pchem_request'][calc]
 
 		if calc == 'measured':
 			self.handle_measured_request(sessionid, request_post)
@@ -231,26 +246,14 @@ class CTSTasks(QEDTasks):
 		elif calc == 'epi':
 			self.handle_epi_request(sessionid, request_post)
 
-		else:
+		elif calc == 'sparc':
+			self.handle_sparc_request(sessionid, request_post)
 
-			props = request_post['pchem_request'][calc]
+		elif calc == 'test':
+			self.handle_testws_request(sessionid, request_post)
 
-			# Makes a request per property (and per method if they exist) to
-			# the remaining calculators (testws, chemaxon, sparc).
-			for prop_index in range(0, len(props)):
-
-				# Sets 'prop' key for making request to calculator:
-				prop = props[prop_index]
-				request_post['prop'] = prop
-
-				if calc == 'test':
-					self.handle_testws_request(sessionid, request_post)
-
-				elif calc == 'chemaxon':
-					self.handle_chemaxon_request(sessionid, request_post)
-
-				elif calc == 'sparc':
-					self.handle_sparc_request(sessionid, request_post)
+		elif calc == 'chemaxon':
+			self.handle_chemaxon_request(sessionid, request_post)
 
 
 
@@ -260,19 +263,27 @@ class CTSTasks(QEDTasks):
 		property at a time.
 		"""
 		chemaxon_calc = JchemCalc()
+		props = request_post['pchem_request']['chemaxon']
 
-		is_kow = prop == 'kow_no_ph' or prop == 'kow_wph'  # kow has 3 methods
-		if is_kow:
-			# Making request for each method (required by jchem ws):
-			for i in range(0, len(chemaxon_calc.methods)):
-				request_post['method'] = chemaxon_calc.methods[i]
+		# Makes a request per property (and per method if they exist)
+		for prop_index in range(0, len(props)):
+
+			# Sets 'prop' key for making request to calculator:
+			prop = props[prop_index]
+			request_post['prop'] = prop
+
+			is_kow = prop == 'kow_no_ph' or prop == 'kow_wph'  # kow has 3 methods
+			if is_kow:
+				# Making request for each method (required by jchem ws):
+				for i in range(0, len(chemaxon_calc.methods)):
+					request_post['method'] = chemaxon_calc.methods[i]
+					_results = chemaxon_calc.data_request_handler(request_post)
+					self.redis_conn.publish(sessionid, json.dumps(_results))
+
+			else:
+				# All other chemaxon properties have single method:
 				_results = chemaxon_calc.data_request_handler(request_post)
 				self.redis_conn.publish(sessionid, json.dumps(_results))
-
-		else:
-			# All other chemaxon properties have single method:
-			_results = chemaxon_calc.data_request_handler(request_post)
-			self.redis_conn.publish(sessionid, json.dumps(_results))
 
 
 
@@ -281,8 +292,30 @@ class CTSTasks(QEDTasks):
 		Handles SPARC calculator p-chem requests, one p-chem
 		property at a time.
 		"""
+		props = request_post['pchem_request']['sparc']
+
+		if 'kow_wph' in props:
+			request_post['prop'] = 'kow_wph'
+			_results = SparcCalc().data_request_handler(request_post)			
+			self.redis_conn.publish(sessionid, json.dumps(_results))
+
+		if 'ion_con' in props:
+			request_post['prop'] = 'ion_con'
+			_results = SparcCalc().data_request_handler(request_post)			
+			self.redis_conn.publish(sessionid, json.dumps(_results))
+
+		# Handles multiprop response (all props but ion_con or kow_wph):
+		request_post['prop'] = "multi"  # gets remaining props from SPARC multiprop endpoint
 		_results = SparcCalc().data_request_handler(request_post)
-		self.redis_conn.publish(sessionid, json.dumps(_results))
+		for prop_obj in _results:
+			if prop_obj['prop'] in props and not prop_obj['prop'] in ['ion_con', 'kow_wph']:\
+				# Returns user-requsted result prop:
+				_prop = prop_obj['prop']
+				_data = prop_obj['data']
+				prop_obj.update(_response_dict)
+				prop_obj.update({'prop': _prop, 'data': _data})
+
+				self.redis_conn.publish(sessionid, json.dumps(prop_obj))
 
 
 
@@ -292,18 +325,26 @@ class CTSTasks(QEDTasks):
 		methods for each property, except log_bcf which has 4 methods.
 		"""
 		testws_calc = TestWSCalc()  # TODO: Change TEST to TheTEST (or TESTWS) to prevent future problems with testing libraries, etc.
+		props = request_post['pchem_request']['test']
 
-		if prop == 'log_bcf':
-			# Adds additional SM method for log_bcf property:
-			request_post['method'] = testws_calc.bcf_method
-			_results = testws_calc.data_request_handler(request_post)
-			self.redis_conn.publish(sessionid, json.dumps(_results))
+		# Makes a request per property (and per method if they exist)
+		for prop_index in range(0, len(props)):
 
-		for method in testws_calc.methods:
-			# Makes requests for each TESTWS method available:
-			request_post['method'] = method
-			_results = testws_calc.data_request_handler(request_post)  # Using TESTWS instead of in-house TEST model
-			self.redis_conn.publish(sessionid, json.dumps(_results))
+			# Sets 'prop' key for making request to calculator:
+			prop = props[prop_index]
+			request_post['prop'] = prop
+
+			if prop == 'log_bcf':
+				# Adds additional SM method for log_bcf property:
+				request_post['method'] = testws_calc.bcf_method
+				_results = testws_calc.data_request_handler(request_post)
+				self.redis_conn.publish(sessionid, json.dumps(_results))
+
+			for method in testws_calc.methods:
+				# Makes requests for each TESTWS method available:
+				request_post['method'] = method
+				_results = testws_calc.data_request_handler(request_post)  # Using TESTWS instead of in-house TEST model
+				self.redis_conn.publish(sessionid, json.dumps(_results))
 
 
 
