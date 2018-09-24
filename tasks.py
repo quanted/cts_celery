@@ -309,12 +309,7 @@ class CTSTasks(QEDTasks):
 		_results = SparcCalc().data_request_handler(request_post)
 		for prop_obj in _results:
 			if prop_obj['prop'] in props and not prop_obj['prop'] in ['ion_con', 'kow_wph']:\
-				# # Returns user-requsted result prop:
-				# _prop = prop_obj['prop']
-				# _data = prop_obj['data']
-				# prop_obj.update(_response_dict)
-				# prop_obj.update({'prop': _prop, 'data': _data})
-
+				# Returns user-requsted result prop:
 				self.redis_conn.publish(sessionid, json.dumps(prop_obj))
 
 
