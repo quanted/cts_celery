@@ -310,7 +310,9 @@ class CTSTasks(QEDTasks):
 		for prop_obj in _results:
 			if prop_obj['prop'] in props and not prop_obj['prop'] in ['ion_con', 'kow_wph']:\
 				# Wrap SPARC datum with request_post keys for frontend:
-				prop_obj.update({'request_post': request_post})
+				# prop_obj.update({'request_post': request_post})
+				prop_obj.update({'request_post': None})
+				prop_obj.update(request_post)
 
 				# Returns user-requsted result prop:
 				self.redis_conn.publish(sessionid, json.dumps(prop_obj))
