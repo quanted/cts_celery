@@ -308,7 +308,12 @@ class CTSTasks(QEDTasks):
 		request_post['prop'] = "multi"  # gets remaining props from SPARC multiprop endpoint
 		_results = SparcCalc().data_request_handler(request_post)
 		for prop_obj in _results:
-			if prop_obj['prop'] in props and not prop_obj['prop'] in ['ion_con', 'kow_wph']:\
+			if prop_obj['prop'] in props and not prop_obj['prop'] in ['ion_con', 'kow_wph']:
+				# Wrap SPARC datum with request_post keys for frontend:
+				prop_obj.update({'request_post': {'service': None}})
+				request_post['prop'] = prop_obj['prop']
+				prop_obj.update(request_post)
+
 				# Returns user-requsted result prop:
 				self.redis_conn.publish(sessionid, json.dumps(prop_obj))
 
