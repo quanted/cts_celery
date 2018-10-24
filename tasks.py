@@ -65,7 +65,7 @@ def cts_task(request_post):
 		task_obj.initiate_requests_parsing(request_post)
 	except Exception as e:
 		logging.warning("Error in cts_task: {}".format(e))
-		task_obj.build_error_obj(request_post, 'error')  # generic error
+		task_obj.build_error_obj(request_post, 'cannot reach calculator')  # generic error
 		# task_obj.redis_conn.publish(request_post.get('sessionid'), json.dumps(results))
 
 @app.task
@@ -152,7 +152,7 @@ class CTSTasks(QEDTasks):
 
 	def build_error_obj(self, request_post, error_message):
 
-		logging.warning("REQUEST POST coming into error build: {}".format(request_post))
+		# logging.warning("REQUEST POST coming into error build: {}".format(request_post))
 
 		if request_post.get('prop'):
 			default_error_obj = {
@@ -164,8 +164,9 @@ class CTSTasks(QEDTasks):
 			# return default_error_obj
 			self.redis_conn.publish(request_post['sessionid'], json.dumps(default_error_obj))
 
-		if 'props' in request_post:
-			for prop in request_post['props']:
+		if 'props' in request_post and 'pchem_request' in request_post:
+			# Loops pchem request list of requested properties for a given calculator:
+			for prop in request_post['pchem_request'][request_post['calc']]:
 				default_error_obj = {
 					'chemical': request_post['chemical'],
 					'calc': request_post['calc'],
