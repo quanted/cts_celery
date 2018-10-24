@@ -164,7 +164,7 @@ class CTSTasks(QEDTasks):
 			# return default_error_obj
 			self.redis_conn.publish(request_post['sessionid'], json.dumps(default_error_obj))
 
-		elif 'props' in request_post:
+		if 'props' in request_post:
 			for prop in request_post['props']:
 				default_error_obj = {
 					'chemical': request_post['chemical'],
