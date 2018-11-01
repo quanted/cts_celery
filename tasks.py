@@ -413,9 +413,13 @@ class CTSTasks(QEDTasks):
 		if not _results.get('valid'):
 			# not valid, send error message in place of data for requested props..
 			for epi_prop in request_post.get('pchem_request', {}).get('epi', []):
-				logging.debug("Sending {} back".format(epi_prop))
 				_results['prop'] = epi_prop
-				self.redis_conn.publish(sessionid, json.dumps(_results))
+				if 'methods' in epi_calc.propMap[epi_prop]:
+					# Sends a response for each method, if the prop has any:
+					for key, val in epi_calc.propMap[epi_prop]['methods'].items():
+						self.redis_conn.publish(sessionid, json.dumps(_results))
+				else:
+					self.redis_conn.publish(sessionid, json.dumps(_results))
 			return
 
 		# key:vals to add to response data objects:
