@@ -60,13 +60,17 @@ app.conf.update(
 
 @app.task
 def cts_task(request_post):
-	try:
-		task_obj = CTSTasks()
-		task_obj.initiate_requests_parsing(request_post)
-	except Exception as e:
-		logging.warning("Error in cts_task: {}".format(e))
-		task_obj.build_error_obj(request_post, 'cannot reach calculator')  # generic error
-		# task_obj.redis_conn.publish(request_post.get('sessionid'), json.dumps(results))
+	
+	task_obj = CTSTasks()
+	task_obj.initiate_requests_parsing(request_post)
+
+	# try:
+	# 	task_obj = CTSTasks()
+	# 	task_obj.initiate_requests_parsing(request_post)
+	# except Exception as e:
+	# 	logging.warning("Error in cts_task: {}".format(e))
+	# 	task_obj.build_error_obj(request_post, 'cannot reach calculator')  # generic error
+	# 	# task_obj.redis_conn.publish(request_post.get('sessionid'), json.dumps(results))
 
 @app.task
 def removeUserJobsFromQueue(sessionid):
@@ -194,7 +198,7 @@ class CTSTasks(QEDTasks):
 			for node in request_post['nodes']:
 				request_post['node'] = node
 				request_post['chemical'] = node['smiles']
-				request_post['mass'] = node['mass']
+				request_post['mass'] = node.get('mass')
 				jobID = self.parse_by_service(request_post.get('sessionid'), request_post)
 		else:
 			jobID = self.parse_by_service(request_post.get('sessionid'), request_post)
