@@ -32,9 +32,13 @@ from cts_calcs.calculator_test import TestWSCalc
 from cts_calcs.calculator_metabolizer import MetabolizerCalc
 from cts_calcs.calculator import Calculator
 from cts_calcs.chemical_information import ChemInfo
+from cts_calcs.mongodb_handler import MongoDBHandler
 from celery.task.control import revoke
 
 
+
+db_handler = MongoDBHandler()  # single mongo instance for cts calcs
+db_handler.connect_to_db()
 
 REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME', 'localhost')
 REDIS_PORT = os.environ.get('REDIS_PORT', 6379)
@@ -92,7 +96,7 @@ def test_celery(sessionid, message):
 ########## App classes used by the celery tasks ##################
 ##################################################################
 
-class QEDTasks(object):
+class QEDTasks:
 	"""
 	Suggested main class for task related things.
 	Anything similar across all apps for task handling
@@ -104,6 +108,7 @@ class QEDTasks(object):
 		REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME', 'localhost')
 		REDIS_PORT = os.environ.get('REDIS_PORT', 6379)
 		self.redis_conn = redis.StrictRedis(host=REDIS_HOSTNAME, port=REDIS_PORT, db=0)
+		# self.db_handler = MongoDBHandler()
 
 	def remove_redis_jobs(self, sessionid):
 		"""
@@ -142,6 +147,8 @@ class QEDTasks(object):
 
 
 
+
+
 class CTSTasks(QEDTasks):
 	"""
 	General class for cts tasks to call,
@@ -151,6 +158,28 @@ class CTSTasks(QEDTasks):
 	"""
 	def __init__(self):
 		QEDTasks.__init__(self)
+		self.chemaxon_calc = JchemCalc()
+		self.epi_calc = EpiCalc()
+		self.testws_calc = TestWSCalc()
+		self.sparc_calc = SparcCalc()
+		self.measured_calc = MeasuredCalc()
+		self.metabolizer_calc = MetabolizerCalc()
+		self.chem_info_obj = ChemInfo()
+
+
+
+	def create_response_obj(self, collection_type, request_post, db_results):
+		"""
+		Creates response object from mongodb results.
+		"""
+		if collection_type == 'chem_info':
+			response_obj = dict(self.chem_info_obj.wrapped_post)
+			response_obj['status'] = True
+			response_obj['data'] = db_results
+			response_obj['request_post'] = request_post
+			return response_obj
+
+
 
 
 
@@ -216,18 +245,26 @@ class CTSTasks(QEDTasks):
 
 		if request_post.get('service') == 'getSpeciationData':
 			logging.info("celery worker consuming chemaxon task")
-			_results = JchemCalc().data_request_handler(request_post)
+			_results = self.chemaxon_calc.data_request_handler(request_post)
 			self.redis_conn.publish(sessionid, json.dumps(_results))
 
 		elif (request_post.get('service') == 'getTransProducts'):
 			logging.info("celery worker consuming metabolizer task")
-			_results = MetabolizerCalc().data_request_handler(request_post)
+			_results = self.metabolizer_calc.data_request_handler(request_post)
 			self.redis_conn.publish(sessionid, json.dumps(_results))
 
 		elif (request_post.get('service') == 'getChemInfo'):
-			logging.info("celery worker consuming cheminfo task")
-			# _results = getChemInfo(request_post)
-			_results = ChemInfo().get_cheminfo(request_post)
+			logging.info("celery worker consuming cheminfo task: {}".format(request_post))
+			query_obj = {'chemical': request_post['chemical']}
+			db_results = db_handler.find_chem_info_document(query_obj)
+			if db_results:
+				# Add response keys (like _results below), then push with redis:
+				logging.info("Getting chem info from DB.")
+				del db_results['_id']
+				_results = self.create_response_obj('chem_info', request_post, db_results)
+			else:
+				logging.info("Making request for chem info.")
+				_results = self.chem_info_obj.get_cheminfo(request_post)
 			self.redis_conn.publish(sessionid, json.dumps(_results))
 		else:
 			self.parse_pchem_request_by_calc(sessionid, request_post)
@@ -267,7 +304,6 @@ class CTSTasks(QEDTasks):
 		Handles ChemAxon calculator p-chem requests, one p-chem
 		property at a time.
 		"""
-		chemaxon_calc = JchemCalc()
 		props = request_post['pchem_request']['chemaxon']
 
 		# Makes a request per property (and per method if they exist)
@@ -280,14 +316,14 @@ class CTSTasks(QEDTasks):
 			is_kow = prop == 'kow_no_ph' or prop == 'kow_wph'  # kow has 3 methods
 			if is_kow:
 				# Making request for each method (required by jchem ws):
-				for i in range(0, len(chemaxon_calc.methods)):
-					request_post['method'] = chemaxon_calc.methods[i]
-					_results = chemaxon_calc.data_request_handler(request_post)
+				for i in range(0, len(self.chemaxon_calc.methods)):
+					request_post['method'] = self.chemaxon_calc.methods[i]
+					_results = self.chemaxon_calc.data_request_handler(request_post)
 					self.redis_conn.publish(sessionid, json.dumps(_results))
 
 			else:
 				# All other chemaxon properties have single method:
-				_results = chemaxon_calc.data_request_handler(request_post)
+				_results = self.chemaxon_calc.data_request_handler(request_post)
 				self.redis_conn.publish(sessionid, json.dumps(_results))
 
 
@@ -301,17 +337,17 @@ class CTSTasks(QEDTasks):
 
 		if 'kow_wph' in props:
 			request_post['prop'] = 'kow_wph'
-			_results = SparcCalc().data_request_handler(request_post)			
+			_results = self.sparc_calc.data_request_handler(request_post)			
 			self.redis_conn.publish(sessionid, json.dumps(_results))
 
 		if 'ion_con' in props:
 			request_post['prop'] = 'ion_con'
-			_results = SparcCalc().data_request_handler(request_post)			
+			_results = self.sparc_calc.data_request_handler(request_post)			
 			self.redis_conn.publish(sessionid, json.dumps(_results))
 
 		# Handles multiprop response (all props but ion_con or kow_wph):
 		request_post['prop'] = "multi"  # gets remaining props from SPARC multiprop endpoint
-		_results = SparcCalc().data_request_handler(request_post)
+		_results = self.sparc_calc.data_request_handler(request_post)
 		for prop_obj in _results:
 			if prop_obj['prop'] in props and not prop_obj['prop'] in ['ion_con', 'kow_wph']:
 				# Wrap SPARC datum with request_post keys for frontend:
@@ -329,7 +365,6 @@ class CTSTasks(QEDTasks):
 		Handles TESTWS calculator p-chem requests, which have 3
 		methods for each property, except log_bcf which has 4 methods.
 		"""
-		testws_calc = TestWSCalc()  # TODO: Change TEST to TheTEST (or TESTWS) to prevent future problems with testing libraries, etc.
 		props = request_post['pchem_request']['test']
 
 		# Makes a request per property (and per method if they exist)
@@ -341,14 +376,14 @@ class CTSTasks(QEDTasks):
 
 			if prop == 'log_bcf':
 				# Adds additional SM method for log_bcf property:
-				request_post['method'] = testws_calc.bcf_method
-				_results = testws_calc.data_request_handler(request_post)
+				request_post['method'] = self.testws_calc.bcf_method
+				_results = self.testws_calc.data_request_handler(request_post)
 				self.redis_conn.publish(sessionid, json.dumps(_results))
 
-			for method in testws_calc.methods:
+			for method in self.testws_calc.methods:
 				# Makes requests for each TESTWS method available:
 				request_post['method'] = method
-				_results = testws_calc.data_request_handler(request_post)  # Using TESTWS instead of in-house TEST model
+				_results = self.testws_calc.data_request_handler(request_post)  # Using TESTWS instead of in-house TEST model
 				self.redis_conn.publish(sessionid, json.dumps(_results))
 
 
@@ -359,8 +394,7 @@ class CTSTasks(QEDTasks):
 		a single request returns data for all properties, and some of
 		those properties have methods.
 		"""
-		measured_calc = MeasuredCalc()
-		_results = measured_calc.data_request_handler(request_post)
+		_results = self.measured_calc.data_request_handler(request_post)
 		_results['calc'] == "measured"
 		props = request_post['pchem_request']['measured']  # requested properties for measured
 		_returned_props = []  # keeping track of any missing prop data that was requested
@@ -383,7 +417,7 @@ class CTSTasks(QEDTasks):
 		for _data_obj in _results.get('data'):
 			for prop in props:
 				# looping user-selected props (cts named props):
-				if _data_obj['prop'] == measured_calc.propMap[prop]['result_key']:
+				if _data_obj['prop'] == self.measured_calc.propMap[prop]['result_key']:
 					_results.update({'prop': prop, 'data': _data_obj.get('data')})
 					self.redis_conn.publish(sessionid, json.dumps(_results))
 					_returned_props.append(prop)
@@ -403,14 +437,13 @@ class CTSTasks(QEDTasks):
 		a single request returns data for all properties, and
 		some of those properties have multiple methods.
 		"""
-		epi_calc = EpiCalc()
 		epi_props_list = request_post.get('pchem_request', {}).get('epi', [])  # available epi props
 		props = request_post['pchem_request']['epi']  # user's requested epi props
 
 		if 'water_sol' in epi_props_list or 'vapor_press' in epi_props_list:
 			request_post['prop'] = 'water_sol'  # trigger cts epi calc to get MP for epi request
 
-		_results = epi_calc.data_request_handler(request_post)
+		_results = self.epi_calc.data_request_handler(request_post)
 		_response_info = {}
 
 		# check if results are valid:
@@ -418,9 +451,9 @@ class CTSTasks(QEDTasks):
 			# not valid, send error message in place of data for requested props..
 			for epi_prop in request_post.get('pchem_request', {}).get('epi', []):
 				_results['prop'] = epi_prop
-				if 'methods' in epi_calc.propMap[epi_prop]:
+				if 'methods' in self.epi_calc.propMap[epi_prop]:
 					# Sends a response for each method, if the prop has any:
-					for key, val in epi_calc.propMap[epi_prop]['methods'].items():
+					for key, val in self.epi_calc.propMap[epi_prop]['methods'].items():
 						self.redis_conn.publish(sessionid, json.dumps(_results))
 				else:
 					self.redis_conn.publish(sessionid, json.dumps(_results))
@@ -441,12 +474,12 @@ class CTSTasks(QEDTasks):
 
 		for _data_obj in _results.get('data', []):
 			_epi_prop = _data_obj.get('prop')
-			_cts_prop_name = epi_calc.props[epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
+			_cts_prop_name = self.epi_calc.props[self.epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
 			_method = _data_obj.get('method')
 
 			if _method:
 				# Use abbreviated method name for pchem table:
-				_epi_methods = epi_calc.propMap.get(_cts_prop_name).get('methods', {})
+				_epi_methods = self.epi_calc.propMap.get(_cts_prop_name).get('methods', {})
 				_method = _epi_methods.get(_data_obj['method'])  # use pchem table name for method
 
 			if _cts_prop_name in props:
