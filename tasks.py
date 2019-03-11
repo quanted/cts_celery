@@ -30,6 +30,7 @@ from cts_calcs.calculator_measured import MeasuredCalc
 from cts_calcs.calculator_test import TestCalc
 from cts_calcs.calculator_test import TestWSCalc
 from cts_calcs.calculator_metabolizer import MetabolizerCalc
+from cts_calcs.calculator_opera import OperaCalc
 from cts_calcs.calculator import Calculator
 from cts_calcs.chemical_information import ChemInfo
 from cts_calcs.mongodb_handler import MongoDBHandler
@@ -181,8 +182,6 @@ class CTSTasks(QEDTasks):
 
 
 
-
-
 	def build_error_obj(self, request_post, error_message):
 
 		# logging.warning("REQUEST POST coming into error build: {}".format(request_post))
@@ -210,7 +209,6 @@ class CTSTasks(QEDTasks):
 
 
 
-
 	def initiate_requests_parsing(self, request_post):
 		"""
 		Checks if request is single chemical or list of chemicals, then 
@@ -231,6 +229,7 @@ class CTSTasks(QEDTasks):
 				jobID = self.parse_by_service(request_post.get('sessionid'), request_post)
 		else:
 			jobID = self.parse_by_service(request_post.get('sessionid'), request_post)
+
 
 
 	def parse_by_service(self, sessionid, request_post):
@@ -296,6 +295,23 @@ class CTSTasks(QEDTasks):
 
 		elif calc == 'chemaxon':
 			self.handle_chemaxon_request(sessionid, request_post)
+
+		elif calc == 'opera':
+			self.handle_opera_request(sessionid, request_post)
+
+
+
+	def handle_opera_request(self, sessionid, request_post):
+		"""
+		Handles OPERA calculator p-chem requests. Makes one request and
+		gets list of all properties at once.
+		"""
+		request_post['props'] = request_post['pchem_request']['opera']
+		pchem_data = OperaCalc().data_request_handler(request_post)
+
+		# Returns pchem data 1 prop at a time:
+		for pchem_datum in pchem_data.get('data'):
+			self.redis_conn.publish(sessionid, json.dumps(pchem_datum))
 
 
 
