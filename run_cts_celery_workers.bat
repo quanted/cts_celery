@@ -17,8 +17,8 @@ rem start celery -A tasks worker -Q test --loglevel=info --concurrency=1 -n test
 
 start celery -A tasks worker -Q manager_queue --loglevel=info --concurrency=1 -n manager_worker
 start celery -A tasks worker -Q cts_queue --loglevel=info --concurrency=1 -n cts_worker_1
-start celery -A tasks worker -Q cts_queue --loglevel=info --concurrency=1 -n cts_worker_2
-start celery -A tasks worker -Q cts_queue --loglevel=info --concurrency=1 -n cts_worker_3
+rem start celery -A tasks worker -Q cts_queue --loglevel=info --concurrency=1 -n cts_worker_2
+rem start celery -A tasks worker -Q cts_queue --loglevel=info --concurrency=1 -n cts_worker_3
 
 :: Below is the little servlet to monitor celery workers. It's not required.
 :: start flower -A tasks --port=5000
