@@ -182,30 +182,32 @@ class CTSTasks(QEDTasks):
 
 
 
-	def build_error_obj(self, request_post, error_message):
+	def build_error_obj(self, response_post, error_message):
 
-		# logging.warning("REQUEST POST coming into error build: {}".format(request_post))
+		# logging.warning("REQUEST POST coming into error build: {}".format(response_post))
 
-		if request_post.get('prop'):
+		if response_post.get('prop'):
 			default_error_obj = {
-				'chemical': request_post['chemical'],
-				'calc': request_post['calc'],
-				'prop': request_post['prop'],
+				'chemical': response_post['chemical'],
+				'calc': response_post['calc'],
+				'prop': response_post['prop'],
 				'data': error_message
 			}
 			# return default_error_obj
-			self.redis_conn.publish(request_post['sessionid'], json.dumps(default_error_obj))
+			self.redis_conn.publish(response_post['sessionid'], json.dumps(default_error_obj))
+			return
 
-		if 'props' in request_post and 'pchem_request' in request_post:
+		if 'props' in response_post and 'pchem_request' in response_post:
 			# Loops pchem request list of requested properties for a given calculator:
-			for prop in request_post['pchem_request'][request_post['calc']]:
-				default_error_obj = {
-					'chemical': request_post['chemical'],
-					'calc': request_post['calc'],
+			for prop in response_post['pchem_request'][response_post['calc']]:
+				default_error_obj = dict(response_post)
+				default_error_obj.update({
+					'chemical': response_post['chemical'],
+					'calc': response_post['calc'],
 					'prop': prop,
 					'data': error_message
-				}
-				self.redis_conn.publish(request_post['sessionid'], json.dumps(default_error_obj))
+				})
+				self.redis_conn.publish(response_post['sessionid'], json.dumps(default_error_obj))
 
 
 
@@ -308,6 +310,10 @@ class CTSTasks(QEDTasks):
 		"""
 		request_post['props'] = request_post['pchem_request']['opera']
 		pchem_data = OperaCalc().data_request_handler(request_post)
+
+		if not pchem_data.get('valid'):
+			self.build_error_obj(pchem_data, pchem_data.get('data'))
+			return
 
 		# Returns pchem data 1 prop at a time:
 		for pchem_datum in pchem_data.get('data'):
