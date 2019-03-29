@@ -223,12 +223,21 @@ class CTSTasks(QEDTasks):
 		that job despite the user not being there :(
 		"""
 		logging.info("Request post coming into cts_task: {}".format(request_post))
+
+		# if 'nodes' in request_post and request_post.get('calc') == 'opera':
+		# 	# Send all chemicals to OPERA calc to compute at the same time:
+		# 	logging.warning("Calling OPERA once for all batch chemicals.")
+			# jobID = self.parse_by_service(request_post.get('sessionid'), request_post)
+
 		if 'nodes' in request_post:
+			# Handles batch mode one chemical at a time:
 			for node in request_post['nodes']:
-				request_post['node'] = node
-				request_post['chemical'] = node['smiles']
-				request_post['mass'] = node.get('mass')
-				jobID = self.parse_by_service(request_post.get('sessionid'), request_post)
+				request_obj = dict(request_post)
+				request_obj['node'] = node
+				request_obj['chemical'] = node['smiles']
+				request_obj['mass'] = node.get('mass')
+				del request_obj['nodes']
+				jobID = self.parse_by_service(request_post.get('sessionid'), request_obj)
 		else:
 			jobID = self.parse_by_service(request_post.get('sessionid'), request_post)
 
