@@ -166,8 +166,18 @@ class CTSTasks(QEDTasks):
 		self.measured_calc = MeasuredCalc()
 		self.metabolizer_calc = MetabolizerCalc()
 		self.chem_info_obj = ChemInfo()
+		self.opera_calc = OperaCalc()
 
-
+	def build_list_of_chems(self, request_post):
+		"""
+		Builds list of chemicals from 'nodes'.
+		"""
+		if not 'nodes' in request_post:
+			return
+		chem_list = []
+		for node in request_post['nodes']:
+			chem_list.append(node['smiles'])
+		return chem_list
 
 	def create_response_obj(self, collection_type, request_post, db_results):
 		"""
@@ -180,12 +190,7 @@ class CTSTasks(QEDTasks):
 			response_obj['request_post'] = request_post
 			return response_obj
 
-
-
 	def build_error_obj(self, response_post, error_message):
-
-		# logging.warning("REQUEST POST coming into error build: {}".format(response_post))
-
 		if response_post.get('prop'):
 			default_error_obj = {
 				'chemical': response_post['chemical'],
@@ -193,10 +198,8 @@ class CTSTasks(QEDTasks):
 				'prop': response_post['prop'],
 				'data': error_message
 			}
-			# return default_error_obj
 			self.redis_conn.publish(response_post['sessionid'], json.dumps(default_error_obj))
 			return
-
 		if 'props' in response_post and 'pchem_request' in response_post:
 			# Loops pchem request list of requested properties for a given calculator:
 			for prop in response_post['pchem_request'][response_post['calc']]:
@@ -209,8 +212,6 @@ class CTSTasks(QEDTasks):
 				})
 				self.redis_conn.publish(response_post['sessionid'], json.dumps(default_error_obj))
 
-
-
 	def initiate_requests_parsing(self, request_post):
 		"""
 		Checks if request is single chemical or list of chemicals, then 
@@ -222,12 +223,16 @@ class CTSTasks(QEDTasks):
 		(single job), then leaving page; the celery workers would continue processing
 		that job despite the user not being there :(
 		"""
-		logging.info("Request post coming into cts_task: {}".format(request_post))
+		# logging.info("Request post coming into cts_task: {}".format(request_post))
 
-		# if 'nodes' in request_post and request_post.get('calc') == 'opera':
-		# 	# Send all chemicals to OPERA calc to compute at the same time:
-		# 	logging.warning("Calling OPERA once for all batch chemicals.")
+		if 'nodes' in request_post and request_post.get('calc') == 'opera':
+			# Send all chemicals to OPERA calc to compute at the same time:
+			logging.warning("Calling OPERA once for all batch chemicals.")
 			# jobID = self.parse_by_service(request_post.get('sessionid'), request_post)
+			self.handle_opera_request(request_post.get('sessionid'), request_post, batch=True)
+			return
+
+		# logging.warning("NODES: {}".format(request_post.get('nodes')))
 
 		if 'nodes' in request_post:
 			# Handles batch mode one chemical at a time:
@@ -237,9 +242,9 @@ class CTSTasks(QEDTasks):
 				request_obj['chemical'] = node['smiles']
 				request_obj['mass'] = node.get('mass')
 				del request_obj['nodes']
-				jobID = self.parse_by_service(request_post.get('sessionid'), request_obj)
+				self.parse_by_service(request_post.get('sessionid'), request_obj)
 		else:
-			jobID = self.parse_by_service(request_post.get('sessionid'), request_post)
+			self.parse_by_service(request_post.get('sessionid'), request_post)
 
 
 
@@ -252,17 +257,14 @@ class CTSTasks(QEDTasks):
 		Output: Returns nothing, pushes to redis (may not stay this way)
 		"""
 		request_post['sessionid'] = sessionid
-
 		if request_post.get('service') == 'getSpeciationData':
 			logging.info("celery worker consuming chemaxon task")
 			_results = self.chemaxon_calc.data_request_handler(request_post)
 			self.redis_conn.publish(sessionid, json.dumps(_results))
-
 		elif (request_post.get('service') == 'getTransProducts'):
 			logging.info("celery worker consuming metabolizer task")
 			_results = self.metabolizer_calc.data_request_handler(request_post)
 			self.redis_conn.publish(sessionid, json.dumps(_results))
-
 		elif (request_post.get('service') == 'getChemInfo'):
 			logging.info("celery worker consuming cheminfo task: {}".format(request_post))
 			query_obj = {'chemical': request_post['chemical']}
@@ -278,9 +280,7 @@ class CTSTasks(QEDTasks):
 			self.redis_conn.publish(sessionid, json.dumps(_results))
 		else:
 			self.parse_pchem_request_by_calc(sessionid, request_post)
-
 		return
-
 
 	def parse_pchem_request_by_calc(self, sessionid, request_post):
 		"""
@@ -291,34 +291,33 @@ class CTSTasks(QEDTasks):
 		the redis pushing may be handled at the task function level).
 		"""
 		calc = request_post['calc']
-
 		if calc == 'measured':
 			self.handle_measured_request(sessionid, request_post)
-
 		elif calc == 'epi':
 			self.handle_epi_request(sessionid, request_post)
-
 		elif calc == 'sparc':
 			self.handle_sparc_request(sessionid, request_post)
-
 		elif calc == 'test':
 			self.handle_testws_request(sessionid, request_post)
-
 		elif calc == 'chemaxon':
 			self.handle_chemaxon_request(sessionid, request_post)
-
 		elif calc == 'opera':
 			self.handle_opera_request(sessionid, request_post)
 
-
-
-	def handle_opera_request(self, sessionid, request_post):
+	def handle_opera_request(self, sessionid, request_post, batch=False):
 		"""
 		Handles OPERA calculator p-chem requests. Makes one request and
 		gets list of all properties at once.
 		"""
+		pchem_data = {}
 		request_post['props'] = request_post['pchem_request']['opera']
-		pchem_data = OperaCalc().data_request_handler(request_post)
+
+		if batch:
+			chems = self.build_list_of_chems(request_post)
+			request_post['chemical'] = chems  # sets 'chemical' key to list val for batch
+			pchem_data = self.opera_calc.data_request_handler(request_post)
+		else:
+			pchem_data = self.opera_calc.data_request_handler(request_post)
 
 		if not pchem_data.get('valid'):
 			self.build_error_obj(pchem_data, pchem_data.get('data'))
