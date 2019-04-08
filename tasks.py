@@ -267,16 +267,19 @@ class CTSTasks(QEDTasks):
 			self.redis_conn.publish(sessionid, json.dumps(_results))
 		elif (request_post.get('service') == 'getChemInfo'):
 			logging.info("celery worker consuming cheminfo task: {}".format(request_post))
-			query_obj = {'chemical': request_post['chemical']}
-			db_results = db_handler.find_chem_info_document(query_obj)
+
+			# Gets dsstox id to check if chem info exists in DB:
+			dsstox_result = self.chem_info_obj.get_cheminfo(request_post, only_dsstox=True)
+			db_results = db_handler.find_chem_info_document({'dsstoxSubstanceId': dsstox_result.get('dsstoxSubstanceId')})
+
 			if db_results:
-				# Add response keys (like _results below), then push with redis:
 				logging.info("Getting chem info from DB.")
 				del db_results['_id']
 				_results = self.create_response_obj('chem_info', request_post, db_results)
 			else:
 				logging.info("Making request for chem info.")
-				_results = self.chem_info_obj.get_cheminfo(request_post)
+				_results = self.chem_info_obj.get_cheminfo(request_post)  # gets chem info
+				db_handler.insert_chem_info_data(_results['data'])  # inserts chem info into db
 			self.redis_conn.publish(sessionid, json.dumps(_results))
 		else:
 			self.parse_pchem_request_by_calc(sessionid, request_post)
