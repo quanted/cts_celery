@@ -9,6 +9,7 @@ from celery import Celery
 import logging
 import redis
 import json
+import numpy as np
 
 logging.getLogger('celery.task.default').setLevel(logging.DEBUG)
 logging.getLogger().setLevel(logging.DEBUG)
@@ -17,10 +18,6 @@ from temp_config.set_environment import DeployEnv
 runtime_env = DeployEnv()
 runtime_env.load_deployment_environment()
 
-# if not os.environ.get('DJANGO_SETTINGS_FILE'):
-#     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'qed_cts.settings_outside')
-# else:
-#     # os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')  # loads faux django settings so celery can use django lib for templating
 
 from cts_calcs.calculator_chemaxon import JchemCalc
@@ -66,29 +63,26 @@ app.conf.update(
 @app.task
 def cts_task(request_post):
 	
-	task_obj = CTSTasks()
-	task_obj.initiate_requests_parsing(request_post)
+	# task_obj = CTSTasks()
+	# task_obj.initiate_requests_parsing(request_post)
 
-	# try:
-	# 	task_obj = CTSTasks()
-	# 	task_obj.initiate_requests_parsing(request_post)
-	# except Exception as e:
-	# 	logging.warning("Error in cts_task: {}".format(e))
-	# 	task_obj.build_error_obj(request_post, 'cannot reach calculator')  # generic error
-	# 	# task_obj.redis_conn.publish(request_post.get('sessionid'), json.dumps(results))
+	try:
+		task_obj = CTSTasks()
+		task_obj.initiate_requests_parsing(request_post)
+	except Exception as e:
+		logging.warning("Error in cts_task: {}".format(e))
+		task_obj.build_error_obj(request_post, 'cannot reach calculator')  # generic error
 
 @app.task
 def removeUserJobsFromQueue(sessionid):
 	_task_obj = QEDTasks()
-	logging.info("clearing celery task queues from user {}..".format(sessionid))
 	_task_obj.revoke_queued_jobs(sessionid)  # clear jobs from celery
-	logging.info("clearing redis cache from user {}..".format(sessionid))
 	_task_obj.remove_redis_jobs(sessionid)  # clear jobs from redis
 
 
 @app.task
 def test_celery(sessionid, message):
-	logging.info("!!!received message: {}".format(message))
+	logging.info("test_celery received message: {}".format(message))
 	Calculator().redis_conn.publish(sessionid, "hello from celery")  # async push to user
 
 
@@ -109,7 +103,6 @@ class QEDTasks:
 		REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME', 'localhost')
 		REDIS_PORT = os.environ.get('REDIS_PORT', 6379)
 		self.redis_conn = redis.StrictRedis(host=REDIS_HOSTNAME, port=REDIS_PORT, db=0)
-		# self.db_handler = MongoDBHandler()
 
 	def remove_redis_jobs(self, sessionid):
 		"""
@@ -117,9 +110,8 @@ class QEDTasks:
 		a user is finished with them
 		"""
 		try:
-			# user_jobs_json = self.redis_conn.get(sessionid)  # all user's jobs
 			user_jobs_list = self.redis_conn.lrange(sessionid, 0, -1)
-			logging.info("user's jobs: {}".format(user_jobs_list))
+			# logging.info("user's jobs: {}".format(user_jobs_list))
 			if user_jobs_list:
 				self.redis_conn.delete(sessionid)  # remove key:vals from user
 			return True
@@ -133,20 +125,15 @@ class QEDTasks:
 		requesting data, and is meant to prevent the queues 
 		from clogging up with requests.
 		"""
-		# user_jobs_list = self.redis_conn.get(sessionid)  # get user's job id list
 		user_jobs_list = self.redis_conn.lrange(sessionid, 0, -1)
-		logging.info("User {}'s JOBS: {}".format(sessionid, user_jobs_list))
-		
+		# logging.info("User {}'s JOBS: {}".format(sessionid, user_jobs_list))
 		if not user_jobs_list:
-			logging.warning("No user jobs, moving on..")
+			# logging.info("No user jobs, moving on..")
 			return
-
 		for job_id in user_jobs_list:
-			logging.info("Revoking job {}..".format(job_id))
+			# logging.info("Revoking job {}..".format(job_id))
 			revoke(job_id, terminate=True)  # stop user job
-			logging.info("Job {} revoked!".format(job_id))
-
-
+			# logging.info("Job {} revoked!".format(job_id))
 
 
 
@@ -223,17 +210,10 @@ class CTSTasks(QEDTasks):
 		(single job), then leaving page; the celery workers would continue processing
 		that job despite the user not being there :(
 		"""
-		# logging.info("Request post coming into cts_task: {}".format(request_post))
-
 		if 'nodes' in request_post and request_post.get('calc') == 'opera':
 			# Send all chemicals to OPERA calc to compute at the same time:
-			logging.warning("Calling OPERA once for all batch chemicals.")
-			# jobID = self.parse_by_service(request_post.get('sessionid'), request_post)
 			self.handle_opera_request(request_post.get('sessionid'), request_post, batch=True)
 			return
-
-		# logging.warning("NODES: {}".format(request_post.get('nodes')))
-
 		if 'nodes' in request_post:
 			# Handles batch mode one chemical at a time:
 			for node in request_post['nodes']:
@@ -241,45 +221,41 @@ class CTSTasks(QEDTasks):
 				request_obj['node'] = node
 				request_obj['chemical'] = node['smiles']
 				request_obj['mass'] = node.get('mass')
+				request_obj['request_post'] = {'service': request_post.get('service')}
 				del request_obj['nodes']
 				self.parse_by_service(request_post.get('sessionid'), request_obj)
 		else:
 			self.parse_by_service(request_post.get('sessionid'), request_post)
 
-
-
 	def parse_by_service(self, sessionid, request_post):
 		"""
 		Further parsing of user request.
 		Checks if 'service', if not it assumes p-chem request
-		TODO: at 'pchem' service instead of assuming..
-
 		Output: Returns nothing, pushes to redis (may not stay this way)
 		"""
 		request_post['sessionid'] = sessionid
 		if request_post.get('service') == 'getSpeciationData':
-			logging.info("celery worker consuming chemaxon task")
 			_results = self.chemaxon_calc.data_request_handler(request_post)
 			self.redis_conn.publish(sessionid, json.dumps(_results))
 		elif (request_post.get('service') == 'getTransProducts'):
-			logging.info("celery worker consuming metabolizer task")
 			_results = self.metabolizer_calc.data_request_handler(request_post)
 			self.redis_conn.publish(sessionid, json.dumps(_results))
 		elif (request_post.get('service') == 'getChemInfo'):
-			logging.info("celery worker consuming cheminfo task: {}".format(request_post))
-
-			# Gets dsstox id to check if chem info exists in DB:
-			dsstox_result = self.chem_info_obj.get_cheminfo(request_post, only_dsstox=True)
-			db_results = db_handler.find_chem_info_document({'dsstoxSubstanceId': dsstox_result.get('dsstoxSubstanceId')})
-
-			if db_results:
-				logging.info("Getting chem info from DB.")
-				del db_results['_id']
-				_results = self.create_response_obj('chem_info', request_post, db_results)
-			else:
-				logging.info("Making request for chem info.")
-				_results = self.chem_info_obj.get_cheminfo(request_post)  # gets chem info
-				db_handler.insert_chem_info_data(_results['data'])  # inserts chem info into db
+			# # chem_info database routine:
+			# ############################################################
+			# # Gets dsstox id to check if chem info exists in DB:
+			# dsstox_result = self.chem_info_obj.get_cheminfo(request_post, only_dsstox=True)
+			# db_results = db_handler.find_chem_info_document({'dsstoxSubstanceId': dsstox_result.get('dsstoxSubstanceId')})
+			# if db_results:
+			# 	logging.info("Getting chem info from DB.")
+			# 	del db_results['_id']
+			# 	_results = self.create_response_obj('chem_info', request_post, db_results)
+			# else:
+			# 	logging.info("Making request for chem info.")
+			# 	_results = self.chem_info_obj.get_cheminfo(request_post)  # gets chem info
+			# 	db_handler.insert_chem_info_data(_results['data'])  # inserts chem info into db
+			# ############################################################
+			_results = self.chem_info_obj.get_cheminfo(request_post)  # gets chem info
 			self.redis_conn.publish(sessionid, json.dumps(_results))
 		else:
 			self.parse_pchem_request_by_calc(sessionid, request_post)
@@ -289,7 +265,6 @@ class CTSTasks(QEDTasks):
 		"""
 		This function loops a user's p-chem request and parses
 		the work by calculator.
-
 		Output: Returns nothing, pushes to redis (may not stay this way, instead
 		the redis pushing may be handled at the task function level).
 		"""
@@ -307,6 +282,41 @@ class CTSTasks(QEDTasks):
 		elif calc == 'opera':
 			self.handle_opera_request(sessionid, request_post)
 
+	def check_opera_db(self, request_post):
+		"""
+		Checks to see if OPERA p-chem data is available in DB, returns it
+		if it exists, and returns False if not.
+		"""
+		dsstox_result = self.chem_info_obj.get_cheminfo(request_post, only_dsstox=True)
+		if not dsstox_result or dsstox_result.get('dsstoxSubstanceId') == "N/A":
+			return False
+		dtxcid_result = db_handler.find_dtxcid_document({'DTXSID': dsstox_result.get('dsstoxSubstanceId')})
+		db_results = None
+		if not dtxcid_result:
+			return False
+		db_results = db_handler.pchem_collection.find({'dsstoxSubstanceId': dtxcid_result.get('DTXCID')})
+		if not db_results:
+			return False
+		return db_results
+
+	def wrap_db_results(self, chem_data, db_results, requested_props):
+		"""
+		Wraps a chemical's OPERA p-chem DB results with the key:vals
+		needed for the frontend.	
+		"""
+		chem_data_list = []
+		for result in db_results:
+			if not result.get('prop') in requested_props:
+				continue
+			if result.get('prop') == 'ion_con':
+				# Converts pka/pkb dict to string:
+				result['data'] = 'pKa: ' + result['data'].get('pKa') + '\npKb: ' + result['data'].get('pKb')
+			result.update(chem_data)
+			result['data'] = self.opera_calc.convert_units_for_cts(result['prop'], result)
+			del result['_id']
+			chem_data_list.append(result)
+		return chem_data_list
+
 	def handle_opera_request(self, sessionid, request_post, batch=False):
 		"""
 		Handles OPERA calculator p-chem requests. Makes one request and
@@ -314,18 +324,49 @@ class CTSTasks(QEDTasks):
 		"""
 		pchem_data = {}
 		request_post['props'] = request_post['pchem_request']['opera']
-
+		# Removes any props not available for OPERA:
+		for prop in request_post['props']:
+			if not prop in self.opera_calc.props:
+				del request_post[prop]
+		# Ignores request if requested props aren't available to OPERA:
+		if request_post['props'] < 1:
+			return
 		if batch:
 			chems = self.build_list_of_chems(request_post)
-			request_post['chemical'] = chems  # sets 'chemical' key to list val for batch
-			pchem_data = self.opera_calc.data_request_handler(request_post)
+			pchem_data['data'] = []
+			node_index = 0
+			remaining_chems = []  # list of chems not found in db
+			for chemical_obj in request_post['nodes']:
+				chem_data = dict(request_post)
+				chem_data.update(chemical_obj)
+				chem_data['node'] = request_post['nodes'][node_index]
+				chem_data['request_post'] = {'workflow': request_post.get('workflow')}
+				del chem_data['nodes']
+				db_results = self.check_opera_db(chem_data)
+				if not db_results:
+					remaining_chems.append(chemical_obj['smiles'])
+					continue
+				wrapped_results = self.wrap_db_results(chem_data, db_results, request_post['props'])
+				wrapped_results = self.opera_calc.remove_opera_db_duplicates(wrapped_results)
+				pchem_data['data'] += wrapped_results
+				node_index += 1
+			# Runs OPERA model for list of remaining chemicals not in DB:
+			if len(remaining_chems) > 0:
+				request_post['chemical'] = remaining_chems
+				model_data = self.opera_calc.data_request_handler(request_post)
+				pchem_data['data'] += model_data.get('data')
+			pchem_data['valid'] = True
 		else:
-			pchem_data = self.opera_calc.data_request_handler(request_post)
-
+			db_results = self.check_opera_db(request_post)  # checks db for pchem data
+			if not db_results:
+				pchem_data = self.opera_calc.data_request_handler(request_post)
+			else:
+				pchem_data = {'valid': True, 'request_post': request_post, 'data': []}
+				pchem_data['data'] = self.wrap_db_results(request_post, db_results, request_post.get('props'))
+				pchem_data['data'] = self.opera_calc.remove_opera_db_duplicates(pchem_data['data'])
 		if not pchem_data.get('valid'):
 			self.build_error_obj(pchem_data, pchem_data.get('data'))
 			return
-
 		# Returns pchem data 1 prop at a time:
 		for pchem_datum in pchem_data.get('data'):
 			self.redis_conn.publish(sessionid, json.dumps(pchem_datum))
@@ -338,14 +379,11 @@ class CTSTasks(QEDTasks):
 		property at a time.
 		"""
 		props = request_post['pchem_request']['chemaxon']
-
 		# Makes a request per property (and per method if they exist)
 		for prop_index in range(0, len(props)):
-
 			# Sets 'prop' key for making request to calculator:
 			prop = props[prop_index]
 			request_post['prop'] = prop
-
 			is_kow = prop == 'kow_no_ph' or prop == 'kow_wph'  # kow has 3 methods
 			if is_kow:
 				# Making request for each method (required by jchem ws):
@@ -353,7 +391,6 @@ class CTSTasks(QEDTasks):
 					request_post['method'] = self.chemaxon_calc.methods[i]
 					_results = self.chemaxon_calc.data_request_handler(request_post)
 					self.redis_conn.publish(sessionid, json.dumps(_results))
-
 			else:
 				# All other chemaxon properties have single method:
 				_results = self.chemaxon_calc.data_request_handler(request_post)
