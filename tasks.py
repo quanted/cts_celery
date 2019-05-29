@@ -35,8 +35,8 @@ from celery.task.control import revoke
 
 
 
-db_handler = MongoDBHandler()  # single mongo instance for cts calcs
-db_handler.connect_to_db()
+# db_handler = MongoDBHandler()  # single mongo instance for cts calcs
+# db_handler.connect_to_db()
 
 REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME', 'localhost')
 REDIS_PORT = os.environ.get('REDIS_PORT', 6379)
@@ -65,12 +65,16 @@ def cts_task(request_post):
 	
 	# task_obj = CTSTasks()
 	# task_obj.initiate_requests_parsing(request_post)
-
 	try:
+		db_handler = MongoDBHandler()  # single mongo instance for cts calcs
+		db_handler.connect_to_db()
 		task_obj = CTSTasks()
-		task_obj.initiate_requests_parsing(request_post)
+		task_obj.initiate_requests_parsing(request_post, db_handler)
+		logging.warning("Closing mongodb connection.")
+		db_handler.mongodb_conn.close()
 	except Exception as e:
 		logging.warning("Error in cts_task: {}".format(e))
+		db_handler.mongodb_conn.close()  # closes mongodb client connection
 		task_obj.build_error_obj(request_post, 'cannot reach calculator')  # generic error
 
 @app.task
@@ -199,7 +203,7 @@ class CTSTasks(QEDTasks):
 				})
 				self.redis_conn.publish(response_post['sessionid'], json.dumps(default_error_obj))
 
-	def initiate_requests_parsing(self, request_post):
+	def initiate_requests_parsing(self, request_post, db_handler):
 		"""
 		Checks if request is single chemical or list of chemicals, then 
 		parses request up to fill worker queues w/ single chemical requests.
@@ -212,7 +216,7 @@ class CTSTasks(QEDTasks):
 		"""
 		if 'nodes' in request_post and request_post.get('calc') == 'opera':
 			# Send all chemicals to OPERA calc to compute at the same time:
-			self.handle_opera_request(request_post.get('sessionid'), request_post, batch=True)
+			self.handle_opera_request(request_post.get('sessionid'), request_post, db_handler, batch=True)
 			return
 		if 'nodes' in request_post:
 			# Handles batch mode one chemical at a time:
@@ -223,11 +227,11 @@ class CTSTasks(QEDTasks):
 				request_obj['mass'] = node.get('mass')
 				request_obj['request_post'] = {'service': request_post.get('service')}
 				del request_obj['nodes']
-				self.parse_by_service(request_post.get('sessionid'), request_obj)
+				self.parse_by_service(request_post.get('sessionid'), request_obj, db_handler)
 		else:
-			self.parse_by_service(request_post.get('sessionid'), request_post)
+			self.parse_by_service(request_post.get('sessionid'), request_post, db_handler)
 
-	def parse_by_service(self, sessionid, request_post):
+	def parse_by_service(self, sessionid, request_post, db_handler):
 		"""
 		Further parsing of user request.
 		Checks if 'service', if not it assumes p-chem request
@@ -258,10 +262,10 @@ class CTSTasks(QEDTasks):
 			_results = self.chem_info_obj.get_cheminfo(request_post)  # gets chem info
 			self.redis_conn.publish(sessionid, json.dumps(_results))
 		else:
-			self.parse_pchem_request_by_calc(sessionid, request_post)
+			self.parse_pchem_request_by_calc(sessionid, request_post, db_handler)
 		return
 
-	def parse_pchem_request_by_calc(self, sessionid, request_post):
+	def parse_pchem_request_by_calc(self, sessionid, request_post, db_handler):
 		"""
 		This function loops a user's p-chem request and parses
 		the work by calculator.
@@ -280,9 +284,9 @@ class CTSTasks(QEDTasks):
 		elif calc == 'chemaxon':
 			self.handle_chemaxon_request(sessionid, request_post)
 		elif calc == 'opera':
-			self.handle_opera_request(sessionid, request_post)
+			self.handle_opera_request(sessionid, request_post, db_handler)
 
-	def check_opera_db(self, request_post):
+	def check_opera_db(self, request_post, db_handler):
 		"""
 		Checks to see if OPERA p-chem data is available in DB, returns it
 		if it exists, and returns False if not.
@@ -317,7 +321,7 @@ class CTSTasks(QEDTasks):
 			chem_data_list.append(result)
 		return chem_data_list
 
-	def handle_opera_request(self, sessionid, request_post, batch=False):
+	def handle_opera_request(self, sessionid, request_post, db_handler, batch=False):
 		"""
 		Handles OPERA calculator p-chem requests. Makes one request and
 		gets list of all properties at once.
@@ -329,7 +333,7 @@ class CTSTasks(QEDTasks):
 			if not prop in self.opera_calc.props:
 				del request_post[prop]
 		# Ignores request if requested props aren't available to OPERA:
-		if request_post['props'] < 1:
+		if len(request_post['props']) < 1:
 			return
 		if batch:
 			chems = self.build_list_of_chems(request_post)
@@ -342,7 +346,7 @@ class CTSTasks(QEDTasks):
 				chem_data['node'] = request_post['nodes'][node_index]
 				chem_data['request_post'] = {'workflow': request_post.get('workflow')}
 				del chem_data['nodes']
-				db_results = self.check_opera_db(chem_data)
+				db_results = self.check_opera_db(chem_data, db_handler)
 				if not db_results:
 					remaining_chems.append(chemical_obj['smiles'])
 					continue
@@ -357,7 +361,7 @@ class CTSTasks(QEDTasks):
 				pchem_data['data'] += model_data.get('data')
 			pchem_data['valid'] = True
 		else:
-			db_results = self.check_opera_db(request_post)  # checks db for pchem data
+			db_results = self.check_opera_db(request_post, db_handler)  # checks db for pchem data
 			if not db_results:
 				pchem_data = self.opera_calc.data_request_handler(request_post)
 			else:
