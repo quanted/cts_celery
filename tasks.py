@@ -65,8 +65,6 @@ def cts_task(request_post):
 		task_obj = CTSTasks()
 		task_obj.initiate_requests_parsing(request_post)
 	except Exception as e:
-		logging.warning("Error in cts_task: {}".format(e))
-		logging.warning("Closing DB connection with client.")
 		db_handler.mongodb_conn.close()  # closes mongodb client connection
 		task_obj.build_error_obj(request_post, 'cannot reach calculator')  # generic error
 
@@ -289,7 +287,7 @@ class CTSTasks(QEDTasks):
 		db_results = db_handler.pchem_collection.find({'dsstoxSubstanceId': dtxcid_result.get('DTXCID')})
 		if not db_results:
 			return False
-		return True
+		return db_results
 
 	def wrap_db_results(self, chem_data, db_results, requested_props):
 		"""
