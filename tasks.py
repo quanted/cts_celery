@@ -35,8 +35,7 @@ from celery.task.control import revoke
 
 
 
-# db_handler = MongoDBHandler()  # single mongo instance for cts calcs
-# db_handler.connect_to_db()
+db_handler = MongoDBHandler()  # mongodb handler for opera pchem data
 
 REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME', 'localhost')
 REDIS_PORT = os.environ.get('REDIS_PORT', 6379)
@@ -62,18 +61,12 @@ app.conf.update(
 
 @app.task
 def cts_task(request_post):
-	
-	# task_obj = CTSTasks()
-	# task_obj.initiate_requests_parsing(request_post)
 	try:
-		db_handler = MongoDBHandler()  # single mongo instance for cts calcs
-		db_handler.connect_to_db()
 		task_obj = CTSTasks()
-		task_obj.initiate_requests_parsing(request_post, db_handler)
-		logging.warning("Closing mongodb connection.")
-		db_handler.mongodb_conn.close()
+		task_obj.initiate_requests_parsing(request_post)
 	except Exception as e:
 		logging.warning("Error in cts_task: {}".format(e))
+		logging.warning("Closing DB connection with client.")
 		db_handler.mongodb_conn.close()  # closes mongodb client connection
 		task_obj.build_error_obj(request_post, 'cannot reach calculator')  # generic error
 
@@ -82,7 +75,6 @@ def removeUserJobsFromQueue(sessionid):
 	_task_obj = QEDTasks()
 	_task_obj.revoke_queued_jobs(sessionid)  # clear jobs from celery
 	_task_obj.remove_redis_jobs(sessionid)  # clear jobs from redis
-
 
 @app.task
 def test_celery(sessionid, message):
@@ -100,7 +92,6 @@ class QEDTasks:
 	Suggested main class for task related things.
 	Anything similar across all apps for task handling
 	could go here.
-
 	NOTE: Current setup requires redis host and port to instantiate
 	"""
 	def __init__(self):
@@ -115,7 +106,6 @@ class QEDTasks:
 		"""
 		try:
 			user_jobs_list = self.redis_conn.lrange(sessionid, 0, -1)
-			# logging.info("user's jobs: {}".format(user_jobs_list))
 			if user_jobs_list:
 				self.redis_conn.delete(sessionid)  # remove key:vals from user
 			return True
@@ -130,14 +120,10 @@ class QEDTasks:
 		from clogging up with requests.
 		"""
 		user_jobs_list = self.redis_conn.lrange(sessionid, 0, -1)
-		# logging.info("User {}'s JOBS: {}".format(sessionid, user_jobs_list))
 		if not user_jobs_list:
-			# logging.info("No user jobs, moving on..")
 			return
 		for job_id in user_jobs_list:
-			# logging.info("Revoking job {}..".format(job_id))
 			revoke(job_id, terminate=True)  # stop user job
-			# logging.info("Job {} revoked!".format(job_id))
 
 
 
@@ -203,7 +189,7 @@ class CTSTasks(QEDTasks):
 				})
 				self.redis_conn.publish(response_post['sessionid'], json.dumps(default_error_obj))
 
-	def initiate_requests_parsing(self, request_post, db_handler):
+	def initiate_requests_parsing(self, request_post):
 		"""
 		Checks if request is single chemical or list of chemicals, then 
 		parses request up to fill worker queues w/ single chemical requests.
@@ -216,7 +202,7 @@ class CTSTasks(QEDTasks):
 		"""
 		if 'nodes' in request_post and request_post.get('calc') == 'opera':
 			# Send all chemicals to OPERA calc to compute at the same time:
-			self.handle_opera_request(request_post.get('sessionid'), request_post, db_handler, batch=True)
+			self.handle_opera_request(request_post.get('sessionid'), request_post, batch=True)
 			return
 		if 'nodes' in request_post:
 			# Handles batch mode one chemical at a time:
@@ -227,11 +213,11 @@ class CTSTasks(QEDTasks):
 				request_obj['mass'] = node.get('mass')
 				request_obj['request_post'] = {'service': request_post.get('service')}
 				del request_obj['nodes']
-				self.parse_by_service(request_post.get('sessionid'), request_obj, db_handler)
+				self.parse_by_service(request_post.get('sessionid'), request_obj)
 		else:
-			self.parse_by_service(request_post.get('sessionid'), request_post, db_handler)
+			self.parse_by_service(request_post.get('sessionid'), request_post)
 
-	def parse_by_service(self, sessionid, request_post, db_handler):
+	def parse_by_service(self, sessionid, request_post):
 		"""
 		Further parsing of user request.
 		Checks if 'service', if not it assumes p-chem request
@@ -262,10 +248,10 @@ class CTSTasks(QEDTasks):
 			_results = self.chem_info_obj.get_cheminfo(request_post)  # gets chem info
 			self.redis_conn.publish(sessionid, json.dumps(_results))
 		else:
-			self.parse_pchem_request_by_calc(sessionid, request_post, db_handler)
+			self.parse_pchem_request_by_calc(sessionid, request_post)
 		return
 
-	def parse_pchem_request_by_calc(self, sessionid, request_post, db_handler):
+	def parse_pchem_request_by_calc(self, sessionid, request_post):
 		"""
 		This function loops a user's p-chem request and parses
 		the work by calculator.
@@ -284,13 +270,15 @@ class CTSTasks(QEDTasks):
 		elif calc == 'chemaxon':
 			self.handle_chemaxon_request(sessionid, request_post)
 		elif calc == 'opera':
-			self.handle_opera_request(sessionid, request_post, db_handler)
+			self.handle_opera_request(sessionid, request_post)
 
-	def check_opera_db(self, request_post, db_handler):
+	def check_opera_db(self, request_post):
 		"""
 		Checks to see if OPERA p-chem data is available in DB, returns it
 		if it exists, and returns False if not.
 		"""
+		if not db_handler.is_connected:
+			return False
 		dsstox_result = self.chem_info_obj.get_cheminfo(request_post, only_dsstox=True)
 		if not dsstox_result or dsstox_result.get('dsstoxSubstanceId') == "N/A":
 			return False
@@ -301,7 +289,7 @@ class CTSTasks(QEDTasks):
 		db_results = db_handler.pchem_collection.find({'dsstoxSubstanceId': dtxcid_result.get('DTXCID')})
 		if not db_results:
 			return False
-		return db_results
+		return True
 
 	def wrap_db_results(self, chem_data, db_results, requested_props):
 		"""
@@ -321,11 +309,12 @@ class CTSTasks(QEDTasks):
 			chem_data_list.append(result)
 		return chem_data_list
 
-	def handle_opera_request(self, sessionid, request_post, db_handler, batch=False):
+	def handle_opera_request(self, sessionid, request_post, batch=False):
 		"""
 		Handles OPERA calculator p-chem requests. Makes one request and
 		gets list of all properties at once.
 		"""
+		db_handler.connect_to_db()
 		pchem_data = {}
 		request_post['props'] = request_post['pchem_request']['opera']
 		# Removes any props not available for OPERA:
@@ -346,7 +335,7 @@ class CTSTasks(QEDTasks):
 				chem_data['node'] = request_post['nodes'][node_index]
 				chem_data['request_post'] = {'workflow': request_post.get('workflow')}
 				del chem_data['nodes']
-				db_results = self.check_opera_db(chem_data, db_handler)
+				db_results = self.check_opera_db(chem_data)
 				if not db_results:
 					remaining_chems.append(chemical_obj['smiles'])
 					continue
@@ -361,7 +350,7 @@ class CTSTasks(QEDTasks):
 				pchem_data['data'] += model_data.get('data')
 			pchem_data['valid'] = True
 		else:
-			db_results = self.check_opera_db(request_post, db_handler)  # checks db for pchem data
+			db_results = self.check_opera_db(request_post)  # checks db for pchem data
 			if not db_results:
 				pchem_data = self.opera_calc.data_request_handler(request_post)
 			else:
@@ -374,8 +363,7 @@ class CTSTasks(QEDTasks):
 		# Returns pchem data 1 prop at a time:
 		for pchem_datum in pchem_data.get('data'):
 			self.redis_conn.publish(sessionid, json.dumps(pchem_datum))
-
-
+		db_handler.mongodb_conn.close()
 
 	def handle_chemaxon_request(self, sessionid, request_post):
 		"""
@@ -400,25 +388,20 @@ class CTSTasks(QEDTasks):
 				_results = self.chemaxon_calc.data_request_handler(request_post)
 				self.redis_conn.publish(sessionid, json.dumps(_results))
 
-
-
 	def handle_sparc_request(self, sessionid, request_post):
 		"""
 		Handles SPARC calculator p-chem requests, one p-chem
 		property at a time.
 		"""
 		props = request_post['pchem_request']['sparc']
-
 		if 'kow_wph' in props:
 			request_post['prop'] = 'kow_wph'
 			_results = self.sparc_calc.data_request_handler(request_post)			
 			self.redis_conn.publish(sessionid, json.dumps(_results))
-
 		if 'ion_con' in props:
 			request_post['prop'] = 'ion_con'
 			_results = self.sparc_calc.data_request_handler(request_post)			
 			self.redis_conn.publish(sessionid, json.dumps(_results))
-
 		# Handles multiprop response (all props but ion_con or kow_wph):
 		request_post['prop'] = "multi"  # gets remaining props from SPARC multiprop endpoint
 		_results = self.sparc_calc.data_request_handler(request_post)
@@ -428,11 +411,8 @@ class CTSTasks(QEDTasks):
 				prop_obj.update({'request_post': {'service': None}})
 				request_post['prop'] = prop_obj['prop']
 				prop_obj.update(request_post)
-
 				# Returns user-requsted result prop:
 				self.redis_conn.publish(sessionid, json.dumps(prop_obj))
-
-
 
 	def handle_testws_request(self, sessionid, request_post):
 		"""
@@ -440,27 +420,21 @@ class CTSTasks(QEDTasks):
 		methods for each property, except log_bcf which has 4 methods.
 		"""
 		props = request_post['pchem_request']['test']
-
 		# Makes a request per property (and per method if they exist)
 		for prop_index in range(0, len(props)):
-
 			# Sets 'prop' key for making request to calculator:
 			prop = props[prop_index]
 			request_post['prop'] = prop
-
 			if prop == 'log_bcf':
 				# Adds additional SM method for log_bcf property:
 				request_post['method'] = self.testws_calc.bcf_method
 				_results = self.testws_calc.data_request_handler(request_post)
 				self.redis_conn.publish(sessionid, json.dumps(_results))
-
 			for method in self.testws_calc.methods:
 				# Makes requests for each TESTWS method available:
 				request_post['method'] = method
 				_results = self.testws_calc.data_request_handler(request_post)  # Using TESTWS instead of in-house TEST model
 				self.redis_conn.publish(sessionid, json.dumps(_results))
-
-
 
 	def handle_measured_request(self, sessionid, request_post):
 		"""
@@ -472,22 +446,18 @@ class CTSTasks(QEDTasks):
 		_results['calc'] == "measured"
 		props = request_post['pchem_request']['measured']  # requested properties for measured
 		_returned_props = []  # keeping track of any missing prop data that was requested
-
 		# check if results are valid:
 		if not _results.get('valid'):
 			# not valid, send error message in place of data for requested props..
 			for measured_prop in request_post.get('pchem_request', {}).get('measured', []):
-				logging.debug("Sending {} back".format(measured_prop))
 				_results['prop'] = measured_prop
 				self.redis_conn.publish(sessionid, json.dumps(_results))
 			return
-
 		if 'error' in _results:
 			for prop in props:
 				_results.update({'prop': prop, 'data': _results.get('error')})
 				self.redis_conn.publish(sessionid, json.dumps(_results))
 			return
-
 		for _data_obj in _results.get('data'):
 			for prop in props:
 				# looping user-selected props (cts named props):
@@ -495,15 +465,11 @@ class CTSTasks(QEDTasks):
 					_results.update({'prop': prop, 'data': _data_obj.get('data')})
 					self.redis_conn.publish(sessionid, json.dumps(_results))
 					_returned_props.append(prop)
-
 		# Check for any missing prop data that user requested..
 		_diff_set = set(_returned_props)^set(props)
 		for missing_prop in _diff_set:
-			logging.warning("{} missing from Measured response..".format(missing_prop))
 			_results.update({'prop': missing_prop, 'data': "N/A"})
 			self.redis_conn.publish(sessionid, json.dumps(_results))  # push up as "N/A"
-
-
 
 	def handle_epi_request(self, sessionid, request_post):
 		"""
@@ -513,13 +479,10 @@ class CTSTasks(QEDTasks):
 		"""
 		epi_props_list = request_post.get('pchem_request', {}).get('epi', [])  # available epi props
 		props = request_post['pchem_request']['epi']  # user's requested epi props
-
 		if 'water_sol' in epi_props_list or 'vapor_press' in epi_props_list:
 			request_post['prop'] = 'water_sol'  # trigger cts epi calc to get MP for epi request
-
 		_results = self.epi_calc.data_request_handler(request_post)
 		_response_info = {}
-
 		# check if results are valid:
 		if not _results.get('valid'):
 			# not valid, send error message in place of data for requested props..
@@ -532,12 +495,10 @@ class CTSTasks(QEDTasks):
 				else:
 					self.redis_conn.publish(sessionid, json.dumps(_results))
 			return
-
 		# key:vals to add to response data objects:
 		for key, val in _results.items():
 			if not key == 'data':
 				_response_info[key] = val
-
 		if not isinstance(_results.get('data'), list):
 			self.redis_conn.publish(sessionid, json.dumps({
 				'data': "Cannot reach EPI",
@@ -545,20 +506,16 @@ class CTSTasks(QEDTasks):
 				'calc': "epi"})
 			)
 			return
-
 		for _data_obj in _results.get('data', []):
 			_epi_prop = _data_obj.get('prop')
 			_cts_prop_name = self.epi_calc.props[self.epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
 			_method = _data_obj.get('method')
-
 			if _method:
 				# Use abbreviated method name for pchem table:
 				_epi_methods = self.epi_calc.propMap.get(_cts_prop_name).get('methods', {})
 				_method = _epi_methods.get(_data_obj['method'])  # use pchem table name for method
-
 			if _cts_prop_name in props:
 				_data_obj.update(_response_info)  # data obj going to client needs some extra keys
 				_data_obj['prop'] = _cts_prop_name
 				_data_obj['method'] = _method
-
 				self.redis_conn.publish(sessionid, json.dumps(_data_obj))
