@@ -24,7 +24,6 @@ from cts_calcs.calculator_chemaxon import JchemCalc
 from cts_calcs.calculator_sparc import SparcCalc
 from cts_calcs.calculator_epi import EpiCalc
 from cts_calcs.calculator_measured import MeasuredCalc
-from cts_calcs.calculator_test import TestCalc
 from cts_calcs.calculator_test import TestWSCalc
 from cts_calcs.calculator_metabolizer import MetabolizerCalc
 from cts_calcs.calculator_opera import OperaCalc
