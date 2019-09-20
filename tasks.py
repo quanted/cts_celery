@@ -64,7 +64,9 @@ def cts_task(request_post):
 		task_obj = CTSTasks()
 		task_obj.initiate_requests_parsing(request_post)
 	except Exception as e:
-		db_handler.mongodb_conn.close()  # closes mongodb client connection
+		logging.warning("Error calling task: {}".format(e))
+		if db_handler.is_connected:
+			db_handler.mongodb_conn.close()  # closes mongodb client connection
 		task_obj.build_error_obj(request_post, 'cannot reach calculator')  # generic error
 
 @app.task
