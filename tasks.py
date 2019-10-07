@@ -26,6 +26,7 @@ from cts_calcs.calculator_epi import EpiCalc
 from cts_calcs.calculator_measured import MeasuredCalc
 from cts_calcs.calculator_test import TestWSCalc
 from cts_calcs.calculator_metabolizer import MetabolizerCalc
+from cts_calcs.calculator_biotrans import BiotransCalc
 from cts_calcs.calculator_opera import OperaCalc
 from cts_calcs.calculator import Calculator
 from cts_calcs.chemical_information import ChemInfo
@@ -67,7 +68,7 @@ def cts_task(request_post):
 		logging.warning("Error calling task: {}".format(e))
 		if db_handler.is_connected:
 			db_handler.mongodb_conn.close()  # closes mongodb client connection
-		task_obj.build_error_obj(request_post, 'cannot reach calculator')  # generic error
+		task_obj.build_error_obj(request_post, 'cannot reach calculator', e)  # generic error
 
 @app.task
 def removeUserJobsFromQueue(sessionid):
@@ -141,6 +142,7 @@ class CTSTasks(QEDTasks):
 		self.sparc_calc = SparcCalc()
 		self.measured_calc = MeasuredCalc()
 		self.metabolizer_calc = MetabolizerCalc()
+		self.biotrans_calc = BiotransCalc()
 		self.chem_info_obj = ChemInfo()
 		self.opera_calc = OperaCalc()
 
@@ -166,7 +168,7 @@ class CTSTasks(QEDTasks):
 			response_obj['request_post'] = request_post
 			return response_obj
 
-	def build_error_obj(self, response_post, error_message):
+	def build_error_obj(self, response_post, error_message, thrown_error=None):
 		if response_post.get('prop'):
 			default_error_obj = {
 				'chemical': response_post['chemical'],
@@ -187,6 +189,13 @@ class CTSTasks(QEDTasks):
 					'data': error_message
 				})
 				self.redis_conn.publish(response_post['sessionid'], json.dumps(default_error_obj))
+			return
+
+		if response_post.get('calc') == 'biotrans':
+			if not thrown_error:
+				thrown_error = "Cannot retrieve data"
+			self.redis_conn.publish(response_post['sessionid'], json.dumps({'error': str(thrown_error)}))
+
 
 	def initiate_requests_parsing(self, request_post):
 		"""
@@ -227,7 +236,12 @@ class CTSTasks(QEDTasks):
 			_results = self.chemaxon_calc.data_request_handler(request_post)
 			self.redis_conn.publish(sessionid, json.dumps(_results))
 		elif (request_post.get('service') == 'getTransProducts'):
-			_results = self.metabolizer_calc.data_request_handler(request_post)
+
+			if request_post.get('calc') == 'biotrans':
+				_results = self.biotrans_calc.data_request_handler(request_post)
+			else:
+				_results = self.metabolizer_calc.data_request_handler(request_post)
+	
 			self.redis_conn.publish(sessionid, json.dumps(_results))
 		elif (request_post.get('service') == 'getChemInfo'):
 			# # chem_info database routine:
