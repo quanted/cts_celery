@@ -299,7 +299,13 @@ class CTSTasks(QEDTasks):
 		db_results = None
 		if not dtxcid_result:
 			return False
-		db_results = db_handler.pchem_collection.find({'dsstoxSubstanceId': dtxcid_result.get('DTXCID')})
+		if request_post.get('prop') == 'kow_wph':
+			db_results = db_handler.pchem_collection.find({
+				'dsstoxSubstanceId': dtxcid_result.get('DTXCID'),
+				'ph': float(request_post.get('ph', 7.4))
+			})
+		else:
+			db_results = db_handler.pchem_collection.find({'dsstoxSubstanceId': dtxcid_result.get('DTXCID')})
 		if not db_results:
 			return False
 		return db_results
@@ -352,6 +358,7 @@ class CTSTasks(QEDTasks):
 				if not db_results:
 					remaining_chems.append(chemical_obj['smiles'])
 					continue
+				db_results = self.opera_calc.get_logd_at_ph(db_results, request_post.get('ph', '7.4'))
 				wrapped_results = self.wrap_db_results(chem_data, db_results, request_post['props'])
 				wrapped_results = self.opera_calc.remove_opera_db_duplicates(wrapped_results)
 				pchem_data['data'] += wrapped_results
@@ -368,6 +375,7 @@ class CTSTasks(QEDTasks):
 				pchem_data = self.opera_calc.data_request_handler(request_post)
 			else:
 				pchem_data = {'valid': True, 'request_post': request_post, 'data': []}
+				db_results = self.opera_calc.get_logd_at_ph(db_results, request_post.get('ph', '7.4'))
 				pchem_data['data'] = self.wrap_db_results(request_post, db_results, request_post.get('props'))
 				pchem_data['data'] = self.opera_calc.remove_opera_db_duplicates(pchem_data['data'])
 		if not pchem_data.get('valid'):
