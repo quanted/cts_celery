@@ -358,7 +358,7 @@ class CTSTasks(QEDTasks):
 				if not db_results:
 					remaining_chems.append(chemical_obj['smiles'])
 					continue
-				db_results = self.opera_calc.get_logd_at_ph(db_results, request_post.get('ph', '7.4'))
+				db_results = self.opera_calc.curate_logd(db_results, request_post, request_post.get('ph'))
 				wrapped_results = self.wrap_db_results(chem_data, db_results, request_post['props'])
 				wrapped_results = self.opera_calc.remove_opera_db_duplicates(wrapped_results)
 				pchem_data['data'] += wrapped_results
@@ -375,7 +375,7 @@ class CTSTasks(QEDTasks):
 				pchem_data = self.opera_calc.data_request_handler(request_post)
 			else:
 				pchem_data = {'valid': True, 'request_post': request_post, 'data': []}
-				db_results = self.opera_calc.get_logd_at_ph(db_results, request_post.get('ph', '7.4'))
+				db_results = self.opera_calc.curate_logd(db_results, request_post, request_post.get('ph'))
 				pchem_data['data'] = self.wrap_db_results(request_post, db_results, request_post.get('props'))
 				pchem_data['data'] = self.opera_calc.remove_opera_db_duplicates(pchem_data['data'])
 		if not pchem_data.get('valid'):
