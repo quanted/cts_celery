@@ -61,8 +61,8 @@ app.conf.update(
 
 @app.task
 def cts_task(request_post):
+	task_obj = CTSTasks()
 	try:
-		task_obj = CTSTasks()
 		task_obj.initiate_requests_parsing(request_post)
 	except Exception as e:
 		logging.warning("Error calling task: {}".format(e))
