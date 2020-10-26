@@ -211,8 +211,7 @@ class CTSTasks(QEDTasks):
 		if 'nodes' in request_post and request_post.get('calc') == 'opera':
 			# Send all chemicals to OPERA calc to compute at the same time:
 			self.handle_opera_request(request_post.get('sessionid'), request_post, batch=True)
-			return
-		if 'nodes' in request_post:
+		elif 'nodes' in request_post:
 			# Handles batch mode one chemical at a time:
 			for node in request_post['nodes']:
 				request_obj = dict(request_post)
@@ -383,6 +382,8 @@ class CTSTasks(QEDTasks):
 			return
 		# Returns pchem data 1 prop at a time:
 		for pchem_datum in pchem_data.get('data'):
+			pchem_datum['workflow'] = request_post['workflow']
+			pchem_datum['request_post'] = {}
 			self.redis_conn.publish(sessionid, json.dumps(pchem_datum))
 		db_handler.mongodb_conn.close()
 
