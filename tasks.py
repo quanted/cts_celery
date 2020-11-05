@@ -208,7 +208,7 @@ class CTSTasks(QEDTasks):
 		(single job), then leaving page; the celery workers would continue processing
 		that job despite the user not being there :(
 		"""
-		if 'nodes' in request_post and request_post.get('calc') == 'opera':
+		if request_post.get('calc') == 'opera' and not request_post.get('service') == "getTransProducts" and 'nodes' in request_post:
 			# Send all chemicals to OPERA calc to compute at the same time:
 			self.handle_opera_request(request_post.get('sessionid'), request_post, batch=True)
 		elif 'nodes' in request_post:
@@ -364,8 +364,9 @@ class CTSTasks(QEDTasks):
 				node_index += 1
 			# Runs OPERA model for list of remaining chemicals not in DB:
 			if len(remaining_chems) > 0:
-				request_post['chemical'] = remaining_chems
-				model_data = self.opera_calc.data_request_handler(request_post)
+				request = dict(request_post)
+				request['chemical'] = remaining_chems
+				model_data = self.opera_calc.data_request_handler(request)
 				pchem_data['data'] += model_data.get('data')
 			pchem_data['valid'] = True
 		else:
@@ -382,8 +383,10 @@ class CTSTasks(QEDTasks):
 			return
 		# Returns pchem data 1 prop at a time:
 		for pchem_datum in pchem_data.get('data'):
-			pchem_datum['workflow'] = request_post['workflow']
-			pchem_datum['request_post'] = {}
+			pchem_datum.update(request_post)
+			if 'nodes' in pchem_datum:
+				del pchem_datum['nodes']
+			pchem_datum['request_post'] = {'workflow': request_post.get('workflow')}
 			self.redis_conn.publish(sessionid, json.dumps(pchem_datum))
 		db_handler.mongodb_conn.close()
 
