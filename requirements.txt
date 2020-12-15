@@ -1,5 +1,5 @@
 celery==4.1.0
 Jinja2==2.9.6
 redis==3.5.3
-requests==2.18.4
+requests==2.20.0
 python-dotenv==0.15.0
