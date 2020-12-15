@@ -1,4 +1,4 @@
-celery==4.1.0
+celery==5.0.4
 Jinja2==2.9.6
 redis==3.5.3
 requests==2.18.4
