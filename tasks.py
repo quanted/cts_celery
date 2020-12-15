@@ -9,7 +9,6 @@ from celery import Celery
 import logging
 import redis
 import json
-import numpy as np
 
 logging.getLogger('celery.task.default').setLevel(logging.DEBUG)
 logging.getLogger().setLevel(logging.DEBUG)
@@ -31,7 +30,6 @@ from cts_calcs.calculator_opera import OperaCalc
 from cts_calcs.calculator import Calculator
 from cts_calcs.chemical_information import ChemInfo
 from cts_calcs.mongodb_handler import MongoDBHandler
-from celery.task.control import revoke
 
 
 
@@ -123,7 +121,8 @@ class QEDTasks:
 		if not user_jobs_list:
 			return
 		for job_id in user_jobs_list:
-			revoke(job_id, terminate=True)  # stop user job
+			logging.warning("Removing job: {}".format(job_id))
+			app.control.revoke(job_id.decode('utf-8'))
 
 
 
