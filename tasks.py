@@ -356,6 +356,7 @@ class CTSTasks(QEDTasks):
 				if not db_results:
 					remaining_chems.append(chemical_obj['smiles'])
 					continue
+				logging.info("Getting OPERA p-chem from database.")
 				db_results = self.opera_calc.curate_logd(db_results, request_post, request_post.get('ph'))
 				wrapped_results = self.wrap_db_results(chem_data, db_results, request_post['props'])
 				wrapped_results = self.opera_calc.remove_opera_db_duplicates(wrapped_results)
@@ -365,14 +366,17 @@ class CTSTasks(QEDTasks):
 			if len(remaining_chems) > 0:
 				request = dict(request_post)
 				request['chemical'] = remaining_chems
+				logging.info("Running OPERA model.")
 				model_data = self.opera_calc.data_request_handler(request)
 				pchem_data['data'] += model_data.get('data')
 			pchem_data['valid'] = True
 		else:
 			db_results = self.check_opera_db(request_post)  # checks db for pchem data
 			if not db_results:
+				logging.info("Running OPERA model.")
 				pchem_data = self.opera_calc.data_request_handler(request_post)
 			else:
+				logging.info("Getting OPERA p-chem from database.")
 				pchem_data = {'valid': True, 'request_post': request_post, 'data': []}
 				db_results = self.opera_calc.curate_logd(db_results, request_post, request_post.get('ph'))
 				pchem_data['data'] = self.wrap_db_results(request_post, db_results, request_post.get('props'))
