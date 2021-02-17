@@ -30,6 +30,7 @@ from cts_calcs.calculator_opera import OperaCalc
 from cts_calcs.calculator import Calculator
 from cts_calcs.chemical_information import ChemInfo
 from cts_calcs.mongodb_handler import MongoDBHandler
+from cts_calcs.calculator_envipath import EnvipathCalc
 
 
 
@@ -144,6 +145,7 @@ class CTSTasks(QEDTasks):
 		self.biotrans_calc = BiotransCalc()
 		self.chem_info_obj = ChemInfo()
 		self.opera_calc = OperaCalc()
+		self.envipath_calc = EnvipathCalc()
 
 	def build_list_of_chems(self, request_post):
 		"""
@@ -190,7 +192,7 @@ class CTSTasks(QEDTasks):
 				self.redis_conn.publish(response_post['sessionid'], json.dumps(default_error_obj))
 			return
 
-		if response_post.get('calc') == 'biotrans':
+		if response_post.get('calc') == 'biotrans' or response_post.get('calc') == 'envipath':
 			if not thrown_error:
 				thrown_error = "Cannot retrieve data"
 			self.redis_conn.publish(response_post['sessionid'], json.dumps({'error': str(thrown_error)}))
@@ -237,6 +239,8 @@ class CTSTasks(QEDTasks):
 
 			if request_post.get('calc') == 'biotrans':
 				_results = self.biotrans_calc.data_request_handler(request_post)
+			elif request_post.get('calc') == 'envipath':
+				_results = self.envipath_calc.data_request_handler(request_post)
 			else:
 				_results = self.metabolizer_calc.data_request_handler(request_post)
 	
