@@ -9,7 +9,6 @@ from celery import Celery
 import logging
 import redis
 import json
-import numpy as np
 
 logging.getLogger('celery.task.default').setLevel(logging.DEBUG)
 logging.getLogger().setLevel(logging.DEBUG)
@@ -31,7 +30,7 @@ from cts_calcs.calculator_opera import OperaCalc
 from cts_calcs.calculator import Calculator
 from cts_calcs.chemical_information import ChemInfo
 from cts_calcs.mongodb_handler import MongoDBHandler
-from celery.task.control import revoke
+from cts_calcs.calculator_envipath import EnvipathCalc
 
 
 
@@ -61,8 +60,8 @@ app.conf.update(
 
 @app.task
 def cts_task(request_post):
+	task_obj = CTSTasks()
 	try:
-		task_obj = CTSTasks()
 		task_obj.initiate_requests_parsing(request_post)
 	except Exception as e:
 		logging.warning("Error calling task: {}".format(e))
@@ -123,7 +122,8 @@ class QEDTasks:
 		if not user_jobs_list:
 			return
 		for job_id in user_jobs_list:
-			revoke(job_id, terminate=True)  # stop user job
+			logging.warning("Removing job: {}".format(job_id))
+			app.control.revoke(job_id.decode('utf-8'))
 
 
 
@@ -145,6 +145,7 @@ class CTSTasks(QEDTasks):
 		self.biotrans_calc = BiotransCalc()
 		self.chem_info_obj = ChemInfo()
 		self.opera_calc = OperaCalc()
+		self.envipath_calc = EnvipathCalc()
 
 	def build_list_of_chems(self, request_post):
 		"""
@@ -191,7 +192,7 @@ class CTSTasks(QEDTasks):
 				self.redis_conn.publish(response_post['sessionid'], json.dumps(default_error_obj))
 			return
 
-		if response_post.get('calc') == 'biotrans':
+		if response_post.get('calc') == 'biotrans' or response_post.get('calc') == 'envipath':
 			if not thrown_error:
 				thrown_error = "Cannot retrieve data"
 			self.redis_conn.publish(response_post['sessionid'], json.dumps({'error': str(thrown_error)}))
@@ -208,11 +209,10 @@ class CTSTasks(QEDTasks):
 		(single job), then leaving page; the celery workers would continue processing
 		that job despite the user not being there :(
 		"""
-		if 'nodes' in request_post and request_post.get('calc') == 'opera':
+		if request_post.get('calc') == 'opera' and not request_post.get('service') == "getTransProducts" and 'nodes' in request_post:
 			# Send all chemicals to OPERA calc to compute at the same time:
 			self.handle_opera_request(request_post.get('sessionid'), request_post, batch=True)
-			return
-		if 'nodes' in request_post:
+		elif 'nodes' in request_post:
 			# Handles batch mode one chemical at a time:
 			for node in request_post['nodes']:
 				request_obj = dict(request_post)
@@ -239,6 +239,8 @@ class CTSTasks(QEDTasks):
 
 			if request_post.get('calc') == 'biotrans':
 				_results = self.biotrans_calc.data_request_handler(request_post)
+			elif request_post.get('calc') == 'envipath':
+				_results = self.envipath_calc.data_request_handler(request_post)
 			else:
 				_results = self.metabolizer_calc.data_request_handler(request_post)
 	
@@ -358,6 +360,7 @@ class CTSTasks(QEDTasks):
 				if not db_results:
 					remaining_chems.append(chemical_obj['smiles'])
 					continue
+				logging.info("Getting OPERA p-chem from database.")
 				db_results = self.opera_calc.curate_logd(db_results, request_post, request_post.get('ph'))
 				wrapped_results = self.wrap_db_results(chem_data, db_results, request_post['props'])
 				wrapped_results = self.opera_calc.remove_opera_db_duplicates(wrapped_results)
@@ -365,15 +368,19 @@ class CTSTasks(QEDTasks):
 				node_index += 1
 			# Runs OPERA model for list of remaining chemicals not in DB:
 			if len(remaining_chems) > 0:
-				request_post['chemical'] = remaining_chems
-				model_data = self.opera_calc.data_request_handler(request_post)
+				request = dict(request_post)
+				request['chemical'] = remaining_chems
+				logging.info("Running OPERA model.")
+				model_data = self.opera_calc.data_request_handler(request)
 				pchem_data['data'] += model_data.get('data')
 			pchem_data['valid'] = True
 		else:
 			db_results = self.check_opera_db(request_post)  # checks db for pchem data
 			if not db_results:
+				logging.info("Running OPERA model.")
 				pchem_data = self.opera_calc.data_request_handler(request_post)
 			else:
+				logging.info("Getting OPERA p-chem from database.")
 				pchem_data = {'valid': True, 'request_post': request_post, 'data': []}
 				db_results = self.opera_calc.curate_logd(db_results, request_post, request_post.get('ph'))
 				pchem_data['data'] = self.wrap_db_results(request_post, db_results, request_post.get('props'))
@@ -383,6 +390,10 @@ class CTSTasks(QEDTasks):
 			return
 		# Returns pchem data 1 prop at a time:
 		for pchem_datum in pchem_data.get('data'):
+			pchem_datum.update(request_post)
+			if 'nodes' in pchem_datum:
+				del pchem_datum['nodes']
+			pchem_datum['request_post'] = {'workflow': request_post.get('workflow')}
 			self.redis_conn.publish(sessionid, json.dumps(pchem_datum))
 		db_handler.mongodb_conn.close()
 
