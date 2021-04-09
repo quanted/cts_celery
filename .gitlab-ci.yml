@@ -18,6 +18,8 @@ Build Image:
   
 CTS Testing:
   stage: Testing
+  tags:
+    - docker
   image: $CI_REGISTRY_IMAGE/cts-celery:$CI_COMMIT_REF_NAME
   script:
     - python -m unittest cts_calcs/tests/test_cts_internal.py
