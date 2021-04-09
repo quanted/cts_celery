@@ -290,31 +290,6 @@ class CTSTasks(QEDTasks):
 		elif calc == 'opera':
 			self.handle_opera_request(sessionid, request_post)
 
-	def check_opera_db(self, request_post):
-		"""
-		Checks to see if OPERA p-chem data is available in DB, returns it
-		if it exists, and returns False if not.
-		"""
-		if not db_handler.is_connected:
-			return False
-		dsstox_result = self.chem_info_obj.get_cheminfo(request_post, only_dsstox=True)
-		if not dsstox_result or dsstox_result.get('dsstoxSubstanceId') == "N/A":
-			return False
-		dtxcid_result = db_handler.find_dtxcid_document({'DTXSID': dsstox_result.get('dsstoxSubstanceId')})
-		db_results = None
-		if not dtxcid_result:
-			return False
-		if request_post.get('prop') == 'kow_wph':
-			db_results = db_handler.pchem_collection.find({
-				'dsstoxSubstanceId': dtxcid_result.get('DTXCID'),
-				'ph': float(request_post.get('ph', 7.4))
-			})
-		else:
-			db_results = db_handler.pchem_collection.find({'dsstoxSubstanceId': dtxcid_result.get('DTXCID')})
-		if not db_results:
-			return False
-		return db_results
-
 	def wrap_db_results(self, chem_data, db_results, requested_props):
 		"""
 		Wraps a chemical's OPERA p-chem DB results with the key:vals
@@ -359,7 +334,7 @@ class CTSTasks(QEDTasks):
 				chem_data['node'] = request_post['nodes'][node_index]
 				chem_data['request_post'] = {'workflow': request_post.get('workflow')}
 				del chem_data['nodes']
-				db_results = self.check_opera_db(chem_data)
+				db_results = self.opera_calc.check_opera_db(chem_data)
 				if not db_results:
 					remaining_chems.append(chemical_obj['smiles'])
 					continue
@@ -378,7 +353,7 @@ class CTSTasks(QEDTasks):
 				pchem_data['data'] += model_data.get('data')
 			pchem_data['valid'] = True
 		else:
-			db_results = self.check_opera_db(request_post)  # checks db for pchem data
+			db_results = self.opera_calc.check_opera_db(request_post)  # checks db for pchem data
 			if not db_results:
 				logging.info("Running OPERA model.")
 				pchem_data = self.opera_calc.data_request_handler(request_post)
