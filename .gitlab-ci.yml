@@ -27,7 +27,6 @@ CTS Testing:
     - ls /src/
     - ls /src/cts_calcs/
     - ls /src/cts_calcs/tests/
-    - cd /src/cts_calcs/ && git branch
     - "python -m unittest /src/cts_calcs/tests/integration_tests.py"
 
 Prisma:
