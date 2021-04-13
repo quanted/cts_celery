@@ -27,7 +27,7 @@ CTS Testing:
     - ls /src/
     - ls /src/cts_calcs/
     - ls /src/cts_calcs/tests/
-    - "python -m unittest /src/cts_calcs/tests/integration_tests.py"
+    - "python /src/cts_calcs/tests/integration_tests.py"
 
 Prisma:
   stage: Image Scan
