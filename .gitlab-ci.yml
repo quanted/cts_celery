@@ -14,14 +14,15 @@ Build Image:
   script:
     - mkdir -p /kaniko/.docker
     - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
-    - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $CI_REGISTRY_IMAGE/cts-celery:$CI_COMMIT_REF_NAME
+    - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
   
 CTS Testing:
   stage: Testing
   tags:
     - docker
-  image: $CI_REGISTRY_IMAGE/cts-celery:$CI_COMMIT_REF_NAME
+  image: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
   script:
+    - ls /src/
     - python -m unittest /src/cts_calcs/tests/integration_tests.py
 
 Prisma:
