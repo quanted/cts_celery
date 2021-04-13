@@ -21,6 +21,8 @@ CTS Testing:
   tags:
     - docker
   image: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
+  variables:
+    GIT_SUBMODULE_STRATEGY: recursive
   script:
     - ls /src/cts_calcs/tests/
     - "python -m unittest /src/cts_calcs/tests/integration_tests.py"
