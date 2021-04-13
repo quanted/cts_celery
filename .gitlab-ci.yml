@@ -22,7 +22,7 @@ CTS Testing:
     - docker
   image: $CI_REGISTRY_IMAGE/cts-celery:$CI_COMMIT_REF_NAME
   script:
-    - python -m unittest cts_calcs/tests/test_cts_internal.py
+    - python -m unittest /src/cts_calcs/tests/integration_tests.py
 
 Prisma:
   stage: Image Scan
