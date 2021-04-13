@@ -22,8 +22,8 @@ CTS Testing:
     - docker
   image: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
   script:
-    - ls /src/
-    - python -m unittest /src/cts_calcs/tests/integration_tests.py
+    - ls /src/cts_calcs/tests/
+    - "python -m unittest /src/cts_calcs/tests/integration_tests.py"
 
 Prisma:
   stage: Image Scan
