@@ -24,9 +24,6 @@ CTS Testing:
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
   script:
-    - ls /src/
-    - ls /src/cts_calcs/
-    - ls /src/cts_calcs/tests/
     - python /src/cts_calcs/tests/integration_tests.py
 
 Prisma:
