@@ -313,7 +313,7 @@ class CTSTasks(QEDTasks):
 		Handles OPERA calculator p-chem requests. Makes one request and
 		gets list of all properties at once.
 		"""
-		db_handler.connect_to_db()
+		# db_handler.connect_to_db()
 		pchem_data = {}
 		request_post['props'] = request_post['pchem_request']['opera']
 		# Removes any props not available for OPERA:
@@ -373,7 +373,7 @@ class CTSTasks(QEDTasks):
 				del pchem_datum['nodes']
 			pchem_datum['request_post'] = {'workflow': request_post.get('workflow')}
 			self.redis_conn.publish(sessionid, json.dumps(pchem_datum))
-		db_handler.mongodb_conn.close()
+		# db_handler.mongodb_conn.close()
 
 	def handle_chemaxon_request(self, sessionid, request_post):
 		"""
