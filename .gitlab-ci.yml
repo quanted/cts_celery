@@ -7,7 +7,7 @@ stages:
 Build Image:
   stage: Build
   tags:
-    - docker
+    - devsecops-instance
   image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
@@ -15,21 +15,31 @@ Build Image:
     - mkdir -p /kaniko/.docker
     - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
     - /kaniko/executor --context $CI_PROJECT_DIR --dockerfile $CI_PROJECT_DIR/Dockerfile --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
-  
-CTS Testing:
+
+CTS Unit Testing:
   stage: Testing
   tags:
-    - docker
+    - devsecops-instance
   image: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
   variables:
     GIT_SUBMODULE_STRATEGY: recursive
   script:
-    - python /src/cts_calcs/tests/integration_tests.py
+    - python -m unittest discover /src/cts_calcs/tests
+  
+CTS Integration Testing:
+  stage: Testing
+  tags:
+    - devsecops-instance
+  image: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
+  variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+  script:
+    - python -m unittest discover /src/cts_calcs/tests/integration_tests.py
 
 Prisma:
   stage: Image Scan
   tags:
-    - docker
+    - devsecops-instance
   when: manual
   image: docker:20.10
   # This needs a TwistCLI image based on a Docker base image.
@@ -39,7 +49,7 @@ Prisma:
 NetSparker:
   stage: Application Scan
   tags:
-    - docker
+    - devsecops-instance
   when: manual
   image: docker:20.10
   # This needs a NetSparker image to invoke the scan.
