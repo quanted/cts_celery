@@ -13,10 +13,6 @@ import json
 logging.getLogger('celery.task.default').setLevel(logging.DEBUG)
 logging.getLogger().setLevel(logging.DEBUG)
 
-from temp_config.set_environment import DeployEnv
-runtime_env = DeployEnv()
-runtime_env.load_deployment_environment()
-
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')  # loads faux django settings so celery can use django lib for templating
 
 from cts_calcs.calculator_chemaxon import JchemCalc
