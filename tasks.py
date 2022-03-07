@@ -47,9 +47,9 @@ app = Celery('tasks',
 				backend='redis://{}:6379/0'.format(REDIS_HOSTNAME))
 
 app.conf.update(
-	CELERY_ACCEPT_CONTENT=['json'],
-	CELERY_TASK_SERIALIZER='json',
-	CELERY_RESULT_SERIALIZER='json',
+	accept_content=['json'],
+	task_serializer='json',
+	result_serializer='json',
 )
 
 
