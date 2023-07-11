@@ -17,7 +17,7 @@ RUN apt-get update && \
 RUN pip install -r requirements.txt
 RUN pip install --upgrade pip
 
-RUN chown -R $APP_USER:$APP_USER /src/cts_app
+RUN chown -R $APP_USER:$APP_USER /src
 
 ENV PYTHONPATH /src:$PYTHONPATH
 ENV PATH /src:$PATH
