@@ -15,6 +15,11 @@ RUN pip install -r requirements.txt
 ENV PYTHONPATH /src:$PYTHONPATH
 ENV PATH /src:$PATH
 
+RUN rm -rf \
+    /root/.cache/pip \
+    /usr/local/bin/pip \
+    /usr/local/lib/python3.10/site-packages/pip
+
 RUN apk update && \
 	apk upgrade
 
