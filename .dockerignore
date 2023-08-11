@@ -1,0 +1,7 @@
+env/
+.git
+.gitignore
+.gitlab-ci.yml
+.gitmodules
+__pycache__/
+.github/
