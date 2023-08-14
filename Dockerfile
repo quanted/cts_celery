@@ -18,7 +18,10 @@ ENV PATH /src:$PATH
 RUN rm -rf \
     /root/.cache/pip \
     /usr/local/bin/pip \
-    /usr/local/lib/python3.10/site-packages/pip
+    /usr/local/bin/pip3.10 \
+    /usr/local/bin/pip3 \
+    /usr/local/lib/python3.10/site-packages/pip \
+    /usr/local/lib/python3.10/site-packages/pip-23.0.1.dist-info
 
 RUN apk update && \
 	apk upgrade
