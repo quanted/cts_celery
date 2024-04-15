@@ -22,8 +22,13 @@ RUN apk add --update --no-cache \
     linux-headers \
     && rm -rf /var/cache/apk/*
 
+
+
 COPY . /src/
+
 WORKDIR /src
+
+RUN chmod 755 start-worker.sh start-manager.sh
 
 RUN micromamba create -n $CONDA_ENV -c conda-forge python=3.10
 RUN micromamba install -n $CONDA_ENV -f /src/environment.yml
@@ -41,7 +46,7 @@ RUN micromamba run -n $CONDA_ENV pip uninstall -y xhtml2pdf && micromamba run -n
 
 # Security Issues Mitigations
 # ------------------------- #
-RUN apk del gfortran
+# RUN apk del gfortran
 RUN rm -R /opt/conda/pkgs/redis*
 #RUN rm -R /opt/conda/bin/redis*
 RUN rm -R /opt/conda/pkgs/postgres*
