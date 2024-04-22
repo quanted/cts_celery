@@ -1,5 +1,5 @@
 beautifulsoup4==4.12.3
-celery==5.3.6
+celery==5.4.0
 pymongo==4.6.3
 python-dotenv==1.0.1
 rdkit==2024.3.1
