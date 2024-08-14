@@ -22,11 +22,9 @@ RUN apk add --update --no-cache \
     linux-headers \
     && rm -rf /var/cache/apk/*
 
-
-
 COPY . /src/
-
 WORKDIR /src
+
 
 RUN chmod 755 start-worker.sh start-manager.sh
 
@@ -61,7 +59,6 @@ RUN find /opt/conda/ -name 'server.pem' -delete || true
 RUN find /opt/conda/ -name 'client.pem' -delete || true
 RUN find /opt/conda/ -name 'password_protected.pem' -delete || true
 # ------------------------- #
-
 
 
 RUN chown -R $APP_USER:$APP_USER /src
