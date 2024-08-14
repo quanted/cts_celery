@@ -27,6 +27,7 @@ from cts_calcs.calculator_test import TestWSCalc
 from cts_calcs.calculator_metabolizer import MetabolizerCalc
 from cts_calcs.calculator_biotrans import BiotransCalc
 from cts_calcs.calculator_opera import OperaCalc
+from cts_calcs.calculator_rdkit import RdkitCalc
 from cts_calcs.calculator import Calculator
 from cts_calcs.chemical_information import ChemInfo
 from cts_calcs.mongodb_handler import MongoDBHandler
@@ -61,7 +62,7 @@ app.conf.update(
 @app.task
 def cts_task(request_post):
 
-	logging.warning("REQUEST POST: {}".format(request_post))
+	logging.warning("~~~ REQUEST POST: {}".format(request_post))
 
 	task_obj = CTSTasks()
 	# try:
@@ -143,6 +144,7 @@ class CTSTasks(QEDTasks):
 		self.epi_calc = EpiCalc()
 		self.testws_calc = TestWSCalc()
 		self.sparc_calc = SparcCalc()
+		self.equation_calc = RdkitCalc()
 		self.measured_calc = MeasuredCalc()
 		self.metabolizer_calc = MetabolizerCalc()
 		self.biotrans_calc = BiotransCalc()
@@ -216,6 +218,9 @@ class CTSTasks(QEDTasks):
 			# Send all chemicals to OPERA calc to compute at the same time:
 			self.handle_opera_request(request_post.get('sessionid'), request_post, batch=True)
 		elif 'nodes' in request_post:
+
+			logging.warning("LOOPING NODES")
+
 			# Handles batch mode one chemical at a time:
 			for node in request_post['nodes']:
 				request_obj = dict(request_post)
@@ -223,6 +228,9 @@ class CTSTasks(QEDTasks):
 				request_obj['chemical'] = node['smiles']
 				request_obj['mass'] = node.get('mass')
 				request_obj['request_post'] = {'service': request_post.get('service')}
+
+				logging.warning("NODE OBJ: {}".format(node))
+
 				del request_obj['nodes']
 				self.parse_by_service(request_post.get('sessionid'), request_obj)
 		else:
@@ -245,7 +253,12 @@ class CTSTasks(QEDTasks):
 			elif request_post.get('calc') == 'envipath':
 				_results = self.envipath_calc.data_request_handler(request_post)
 			else:
+
+				# logging.warning("CALLING METABOLIZER CALC with request: {}".format(request_post))
+
 				_results = self.metabolizer_calc.data_request_handler(request_post)
+
+				# logging.warning("metabolizer_calc result: {}".format(_results))
 	
 			self.redis_conn.publish(sessionid, json.dumps(_results))
 		elif (request_post.get('service') == 'getChemInfo'):
@@ -263,7 +276,13 @@ class CTSTasks(QEDTasks):
 			# 	_results = self.chem_info_obj.get_cheminfo(request_post)  # gets chem info
 			# 	db_handler.insert_chem_info_data(_results['data'])  # inserts chem info into db
 			# ############################################################
+
+			# logging.warning("CALLING GET CHEM INFO with request: {}".format(request_post))
+
 			_results = self.chem_info_obj.get_cheminfo(request_post)  # gets chem info
+
+			# logging.warning("CHEM INFO RESULTS: {}".format(_results))
+
 			self.redis_conn.publish(sessionid, json.dumps(_results))
 		else:
 			self.parse_pchem_request_by_calc(sessionid, request_post)
@@ -283,6 +302,8 @@ class CTSTasks(QEDTasks):
 			self.handle_epi_request(sessionid, request_post)
 		elif calc == 'sparc':
 			self.handle_sparc_request(sessionid, request_post)
+		elif calc == 'equation':
+			self.handle_equation_request(sessionid, request_post)
 		elif calc == 'test':
 			self.handle_testws_request(sessionid, request_post)
 		elif calc == 'chemaxon':
@@ -423,6 +444,32 @@ class CTSTasks(QEDTasks):
 				prop_obj.update(request_post)
 				# Returns user-requsted result prop:
 				self.redis_conn.publish(sessionid, json.dumps(prop_obj))
+
+	def handle_equation_request(self, sessionid, request_post):
+		"""
+		Handles request for molecular diffusivity in air and/or water.
+
+		diff water returns Wilk-Chang and Hayduk-Laudie methods.
+		diff air returns FSG method.
+		"""
+		props = request_post['pchem_request']['equation']
+		diff_response = self.equation_calc.get_diffusivity(request_post)
+		diff_vals = dict(diff_response["data"])
+		for prop in props:
+			diff_response["prop"] = prop
+			if prop == "mol_diss":
+				diff_response["data"] = diff_vals["Wilk-Chang"]
+				diff_response["method"] = "Wilk-Chang"
+				self.redis_conn.publish(sessionid, json.dumps(diff_response))
+
+				diff_response["data"] = diff_vals["Hayduk-Laudie"]
+				diff_response["method"] = "Hayduk-Laudie"
+				self.redis_conn.publish(sessionid, json.dumps(diff_response))
+
+			elif prop == "mol_diss_air":
+				diff_response["data"] = diff_vals["FSG"]
+				diff_response["method"] = "FSG"
+				self.redis_conn.publish(sessionid, json.dumps(diff_response))
 
 	def handle_testws_request(self, sessionid, request_post):
 		"""
