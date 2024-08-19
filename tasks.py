@@ -454,12 +454,12 @@ class CTSTasks(QEDTasks):
 		for prop in props:
 			diff_response["prop"] = prop
 			if prop == "mol_diss":
-				diff_response["data"] = diff_vals["Wilk-Chang"]
-				diff_response["method"] = "Wilk-Chang"
+				diff_response["data"] = diff_vals["W-C"]
+				diff_response["method"] = "W-C"
 				self.redis_conn.publish(sessionid, json.dumps(diff_response))
 
-				diff_response["data"] = diff_vals["Hayduk-Laudie"]
-				diff_response["method"] = "Hayduk-Laudie"
+				diff_response["data"] = diff_vals["H-L"]
+				diff_response["method"] = "H-L"
 				self.redis_conn.publish(sessionid, json.dumps(diff_response))
 
 			elif prop == "mol_diss_air":
