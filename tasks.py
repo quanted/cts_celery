@@ -499,30 +499,32 @@ class CTSTasks(QEDTasks):
 		_results['calc'] == "measured"
 		props = request_post['pchem_request']['measured']  # requested properties for measured
 		_returned_props = []  # keeping track of any missing prop data that was requested
+
 		# check if results are valid:
-		if not _results.get('valid'):
+		if 'error' in _results:
 			# not valid, send error message in place of data for requested props..
-			for measured_prop in request_post.get('pchem_request', {}).get('measured', []):
+			for measured_prop in props:
 				_results['prop'] = measured_prop
 				self.redis_conn.publish(sessionid, json.dumps(_results))
 			return
-		if 'error' in _results:
-			for prop in props:
-				_results.update({'prop': prop, 'data': _results.get('error')})
-				self.redis_conn.publish(sessionid, json.dumps(_results))
-			return
-		for _data_obj in _results.get('data'):
-			for prop in props:
-				# looping user-selected props (cts named props):
-				if _data_obj['prop'] == self.measured_calc.propMap[prop]['result_key']:
-					_results.update({'prop': prop, 'data': _data_obj.get('data')})
-					self.redis_conn.publish(sessionid, json.dumps(_results))
-					_returned_props.append(prop)
+
+		for prop_data in _results["prop_results"]:
+			# logging.warning("prop_data: {}".format(prop_data))
+			if prop_data['prop'] in props:
+				prop_result = dict(_results)
+				data_obj = dict(prop_data)
+				del prop_result["prop_results"]
+				prop_result.update(data_obj)
+				prop_result["calc"] = "measured"
+				self.redis_conn.publish(sessionid, json.dumps(prop_result))
+				_returned_props.append(prop_data['prop'])
+
 		# Check for any missing prop data that user requested..
 		_diff_set = set(_returned_props)^set(props)
 		for missing_prop in _diff_set:
 			_results.update({'prop': missing_prop, 'data': "N/A"})
 			self.redis_conn.publish(sessionid, json.dumps(_results))  # push up as "N/A"
+
 
 	def handle_epi_request(self, sessionid, request_post):
 		"""
