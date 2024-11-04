@@ -26,12 +26,12 @@ from cts_calcs.calculator_opera import OperaCalc
 from cts_calcs.calculator_rdkit import RdkitCalc
 from cts_calcs.calculator import Calculator
 from cts_calcs.chemical_information import ChemInfo
-from cts_calcs.mongodb_handler import MongoDBHandler
+# from cts_calcs.mongodb_handler import MongoDBHandler
 from cts_calcs.calculator_envipath import EnvipathCalc
 
 
 
-db_handler = MongoDBHandler()  # mongodb handler for opera pchem data
+# db_handler = MongoDBHandler()  # mongodb handler for opera pchem data
 
 REDIS_HOSTNAME = os.environ.get('REDIS_HOSTNAME', 'localhost')
 REDIS_PORT = os.environ.get('REDIS_PORT', 6379)
@@ -58,16 +58,14 @@ app.conf.update(
 @app.task
 def cts_task(request_post):
 
-	logging.warning("~~~ REQUEST POST: {}".format(request_post))
-
 	task_obj = CTSTasks()
-	# try:
-	task_obj.initiate_requests_parsing(request_post)
-	# except Exception as e:
-	# 	logging.warning("Error calling task: {}".format(e))
-	# 	if db_handler.is_connected:
-	# 		db_handler.mongodb_conn.close()  # closes mongodb client connection
-	# 	task_obj.build_error_obj(request_post, 'cannot reach calculator', e)  # generic error
+	try:
+		task_obj.initiate_requests_parsing(request_post)
+	except Exception as e:
+		logging.warning("Error calling task: {}".format(e))
+		# if db_handler.is_connected:
+		# 	db_handler.mongodb_conn.close()  # closes mongodb client connection
+		task_obj.build_error_obj(request_post, 'cannot reach calculator', e)  # generic error
 
 @app.task
 def removeUserJobsFromQueue(sessionid):
