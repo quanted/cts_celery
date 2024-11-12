@@ -59,13 +59,13 @@ app.conf.update(
 def cts_task(request_post):
 
 	task_obj = CTSTasks()
-	try:
-		task_obj.initiate_requests_parsing(request_post)
-	except Exception as e:
-		logging.warning("Error calling task: {}".format(e))
-		# if db_handler.is_connected:
-		# 	db_handler.mongodb_conn.close()  # closes mongodb client connection
-		task_obj.build_error_obj(request_post, 'cannot reach calculator', e)  # generic error
+	# try:
+	task_obj.initiate_requests_parsing(request_post)
+	# except Exception as e:
+	# 	logging.warning("Error calling task: {}".format(e))
+	# 	# if db_handler.is_connected:
+	# 	# 	db_handler.mongodb_conn.close()  # closes mongodb client connection
+	# 	task_obj.build_error_obj(request_post, 'cannot reach calculator', e)  # generic error
 
 @app.task
 def removeUserJobsFromQueue(sessionid):
