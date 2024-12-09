@@ -41,12 +41,13 @@ logging.info("REDIS_PORT: {}".format(REDIS_PORT))
 
 app = Celery('tasks',
 				broker='redis://{}:6379/0'.format(REDIS_HOSTNAME),	
-				backend='redis://{}:6379/0'.format(REDIS_HOSTNAME))
+				backend='redis://{}:6379/0'.format(REDIS_HOSTNAME),
+				broker_transport_options={'max_connections': 20})
 
 app.conf.update(
 	accept_content=['json'],
 	task_serializer='json',
-	result_serializer='json',
+	result_serializer='json'
 )
 
 
@@ -299,7 +300,8 @@ class CTSTasks(QEDTasks):
 		elif calc == 'equation':
 			self.handle_equation_request(sessionid, request_post)
 		elif calc == 'test':
-			self.handle_testws_request(sessionid, request_post)
+			# self.handle_testws_request(sessionid, request_post)
+			self.handle_testws_post_request(sessionid, request_post)
 		elif calc == 'chemaxon':
 			self.handle_chemaxon_request(sessionid, request_post)
 		elif calc == 'opera':
@@ -486,6 +488,71 @@ class CTSTasks(QEDTasks):
 				request_post['method'] = method
 				_results = self.testws_calc.data_request_handler(request_post)  # Using TESTWS instead of in-house TEST model
 				self.redis_conn.publish(sessionid, json.dumps(_results))
+
+	def handle_testws_post_request(self, sessionid, request_post):
+		"""
+		Handles TESTWS calculator p-chem requests, which have 3
+		methods for each property, except log_bcf which has 4 methods.
+		"""
+		_results = self.testws_calc.data_request_handler(request_post)
+		_results['calc'] == "test"
+		props = request_post['pchem_request']['test']  # requested properties for test
+		_returned_props = []  # keeping track of any missing prop data that was requested
+
+		# check if results are valid:
+		if 'error' in _results:
+			# not valid, send error message in place of data for requested props..
+			for test_prop in props:
+				_results['prop'] = test_prop
+				self.redis_conn.publish(sessionid, json.dumps(_results))
+			return
+
+		for prop_data in _results["prop_results"]:
+
+			if prop_data["endpoint"] == "BCF" and not prop_data["method"] in self.testws_calc.methods + ["sm"]:
+				continue
+			elif prop_data["endpoint"] != "BCF" and not prop_data["method"] in self.testws_calc.methods:
+				continue
+
+			prop_result = dict(_results)
+			data_obj = dict(prop_data)
+			del prop_result["prop_results"]
+			prop_result.update(data_obj)
+			prop_result["calc"] = "test"
+			prop_result["prop"] = self.testws_calc.test_prop_map[data_obj["endpoint"]]
+
+			if not prop_result["prop"] in props:
+				continue
+
+			# Gets response key for property:
+			data_type = self.testws_calc.response_map[prop_result['prop']]['data_type']
+
+			# Sets response data to property's data key (based on desired units)
+			if data_obj.get(data_type):
+				prop_result['data'] = data_obj[data_type]
+
+			# # Returns "N/A" for data if there isn't any TESTWS data found:
+			# if not 'data' in _response_dict or not _response_dict.get('data'):
+			# 	_response_dict['data'] = "N/A"
+			# 	return _response_dict
+
+			# Reformats TESTWS VP result, e.g., "3.14*10^-15" -> "3.14e-15":
+			if prop_result['prop'] == 'vapor_press':
+				prop_result['data'] = self.testws_calc.convert_testws_scinot(prop_result['data'])
+
+			if "error" in prop_result and prop_result["error"] is None:
+				del prop_result["error"]
+
+			prop_result["method"] = prop_result["method"].upper()
+
+			self.redis_conn.publish(sessionid, json.dumps(prop_result))
+			_returned_props.append(prop_result['prop'])
+
+		# Check for any missing prop data that user requested..
+		_diff_set = set(_returned_props)^set(props)
+		for missing_prop in _diff_set:
+			_results.update({'prop': missing_prop, 'data': "N/A"})
+			self.redis_conn.publish(sessionid, json.dumps(_results))  # push up as "N/A"
 
 	def handle_measured_request(self, sessionid, request_post):
 		"""
