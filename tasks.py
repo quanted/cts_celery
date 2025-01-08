@@ -566,7 +566,7 @@ class CTSTasks(QEDTasks):
 		_returned_props = []  # keeping track of any missing prop data that was requested
 
 		# check if results are valid:
-		if 'error' in _results:
+		if 'error' in _results or _results.get('valid') == False:
 			# not valid, send error message in place of data for requested props..
 			for measured_prop in props:
 				_results['prop'] = measured_prop
@@ -627,22 +627,15 @@ class CTSTasks(QEDTasks):
 			)
 			return
 		for _data_obj in _results.get('data', []):
-
-			self.redis_conn.publish(sessionid, json.dumps(_data_obj))
-			
-			# _epi_prop = _data_obj.get('prop')
-
-			# logging.warning("_epi_prop: {}".format(_epi_prop))
-			# epi_prop = self.epi_calc.epi_props.index(_epi_prop)
-			# logging.warning("epi_prop: {}".format(epi_prop))
-			# _cts_prop_name = self.epi_calc.props[self.epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
-			# _method = _data_obj.get('method')
-			# if _method:
-			# 	# Use abbreviated method name for pchem table:
-			# 	_epi_methods = self.epi_calc.propMap.get(_cts_prop_name).get('methods', {})
-			# 	_method = _epi_methods.get(_data_obj['method'])  # use pchem table name for method
-			# if _cts_prop_name in props:
-			# 	_data_obj.update(_response_info)  # data obj going to client needs some extra keys
-			# 	_data_obj['prop'] = _cts_prop_name
-			# 	_data_obj['method'] = _method
-			# 	self.redis_conn.publish(sessionid, json.dumps(_data_obj))
+			_epi_prop = _data_obj.get('prop')
+			_cts_prop_name = self.epi_calc.props[self.epi_calc.epi_props.index(_epi_prop)] # map epi ws key to cts prop key
+			_method = _data_obj.get('method')
+			if _method:
+				# Use abbreviated method name for pchem table:
+				_epi_methods = self.epi_calc.propMap.get(_cts_prop_name).get('methods', {})
+				_method = _epi_methods.get(_data_obj['method'])  # use pchem table name for method
+			if _cts_prop_name in props:
+				_data_obj.update(_response_info)  # data obj going to client needs some extra keys
+				_data_obj['prop'] = _cts_prop_name
+				_data_obj['method'] = _method
+				self.redis_conn.publish(sessionid, json.dumps(_data_obj))
