@@ -307,24 +307,6 @@ class CTSTasks(QEDTasks):
 		elif calc == 'opera':
 			self.handle_opera_request(sessionid, request_post)
 
-	def wrap_db_results(self, chem_data, db_results, requested_props):
-		"""
-		Wraps a chemical's OPERA p-chem DB results with the key:vals
-		needed for the frontend.	
-		"""
-		chem_data_list = []
-		for result in db_results:
-			if not result.get('prop') in requested_props:
-				continue
-			if result.get('prop') == 'ion_con':
-				# Converts pka/pkb dict to string:
-				result['data'] = 'pKa: ' + result['data'].get('pKa') + '\npKb: ' + result['data'].get('pKb')
-			result.update(chem_data)
-			result['data'] = self.opera_calc.convert_units_for_cts(result['prop'], result)
-			del result['_id']
-			chem_data_list.append(result)
-		return chem_data_list
-
 	def handle_opera_request(self, sessionid, request_post, batch=False):
 		"""
 		Handles OPERA calculator p-chem requests. Makes one request and
@@ -357,7 +339,7 @@ class CTSTasks(QEDTasks):
 					continue
 				logging.info("Getting OPERA p-chem from database.")
 				db_results = self.opera_calc.curate_logd(db_results, request_post, request_post.get('ph'))
-				wrapped_results = self.wrap_db_results(chem_data, db_results, request_post['props'])
+				wrapped_results = self.opera_calc.wrap_db_results(chem_data, db_results, request_post['props'])
 				wrapped_results = self.opera_calc.remove_opera_db_duplicates(wrapped_results)
 				pchem_data['data'] += wrapped_results
 				node_index += 1
@@ -378,7 +360,7 @@ class CTSTasks(QEDTasks):
 				logging.info("Getting OPERA p-chem from database.")
 				pchem_data = {'valid': True, 'request_post': request_post, 'data': []}
 				db_results = self.opera_calc.curate_logd(db_results, request_post, request_post.get('ph'))
-				pchem_data['data'] = self.wrap_db_results(request_post, db_results, request_post.get('props'))
+				pchem_data['data'] = self.opera_calc.wrap_db_results(request_post, db_results, request_post.get('props'))
 				pchem_data['data'] = self.opera_calc.remove_opera_db_duplicates(pchem_data['data'])
 		if not pchem_data.get('valid'):
 			self.build_error_obj(pchem_data, pchem_data.get('data'))
@@ -390,7 +372,6 @@ class CTSTasks(QEDTasks):
 				del pchem_datum['nodes']
 			pchem_datum['request_post'] = {'workflow': request_post.get('workflow')}
 			self.redis_conn.publish(sessionid, json.dumps(pchem_datum))
-		# db_handler.mongodb_conn.close()
 
 	def handle_chemaxon_request(self, sessionid, request_post):
 		"""
