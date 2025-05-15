@@ -60,13 +60,13 @@ app.conf.update(
 def cts_task(request_post):
 
 	task_obj = CTSTasks()
-	# try:
-	task_obj.initiate_requests_parsing(request_post)
-	# except Exception as e:
-	# 	logging.warning("Error calling task: {}".format(e))
-	# 	# if db_handler.is_connected:
-	# 	# 	db_handler.mongodb_conn.close()  # closes mongodb client connection
-	# 	task_obj.build_error_obj(request_post, 'cannot reach calculator', e)  # generic error
+	try:
+		task_obj.initiate_requests_parsing(request_post)
+	except Exception as e:
+		logging.warning("Error calling task: {}".format(e))
+		# if db_handler.is_connected:
+		# 	db_handler.mongodb_conn.close()  # closes mongodb client connection
+		task_obj.build_error_obj(request_post, 'cannot reach calculator', e)  # generic error
 
 @app.task
 def removeUserJobsFromQueue(sessionid):
@@ -155,7 +155,10 @@ class CTSTasks(QEDTasks):
 			return
 		chem_list = []
 		for node in request_post['nodes']:
-			chem_list.append(node['smiles'])
+			if len(node) < 1 or not "smiles" in node:
+				continue
+			# chem_list.append(node['smiles'])
+			chem_list.append(node)
 		return chem_list
 
 	def create_response_obj(self, collection_type, request_post, db_results):
@@ -214,8 +217,6 @@ class CTSTasks(QEDTasks):
 			self.handle_opera_request(request_post.get('sessionid'), request_post, batch=True)
 		elif 'nodes' in request_post:
 
-			logging.warning("LOOPING NODES")
-
 			# Handles batch mode one chemical at a time:
 			for node in request_post['nodes']:
 				request_obj = dict(request_post)
@@ -223,8 +224,6 @@ class CTSTasks(QEDTasks):
 				request_obj['chemical'] = node['smiles']
 				request_obj['mass'] = node.get('mass')
 				request_obj['request_post'] = {'service': request_post.get('service')}
-
-				logging.warning("NODE OBJ: {}".format(node))
 
 				del request_obj['nodes']
 				self.parse_by_service(request_post.get('sessionid'), request_obj)
@@ -323,11 +322,13 @@ class CTSTasks(QEDTasks):
 		if len(request_post['props']) < 1:
 			return
 		if batch:
+
 			chems = self.build_list_of_chems(request_post)
 			pchem_data['data'] = []
 			node_index = 0
 			remaining_chems = []  # list of chems not found in db
-			for chemical_obj in request_post['nodes']:
+			# for chemical_obj in request_post['nodes']:
+			for chemical_obj in chems:
 				chem_data = dict(request_post)
 				chem_data.update(chemical_obj)
 				chem_data['node'] = request_post['nodes'][node_index]
