@@ -18,6 +18,7 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')  # loads faux django
 from cts_calcs.calculator_chemaxon import JchemCalc
 from cts_calcs.calculator_sparc import SparcCalc
 from cts_calcs.calculator_epi import EpiCalc
+from cts_calcs.calculator_epi_jar import EpiCalcJar
 from cts_calcs.calculator_measured import MeasuredCalc
 from cts_calcs.calculator_test import TestWSCalc
 from cts_calcs.calculator_metabolizer import MetabolizerCalc
@@ -136,7 +137,6 @@ class CTSTasks(QEDTasks):
 	def __init__(self):
 		QEDTasks.__init__(self)
 		self.chemaxon_calc = JchemCalc()
-		self.epi_calc = EpiCalc()
 		self.testws_calc = TestWSCalc()
 		self.sparc_calc = SparcCalc()
 		self.equation_calc = RdkitCalc()
@@ -146,6 +146,11 @@ class CTSTasks(QEDTasks):
 		self.chem_info_obj = ChemInfo()
 		self.opera_calc = OperaCalc()
 		self.envipath_calc = EnvipathCalc()
+
+		self.epi_calc = EpiCalc()
+		if "api/submit" in os.getenv("CTS_EPI_SERVER"):
+			self.epi_calc = EpiCalcJar()
+			logging.info("EPI Suite URL indicates jar API being used.")
 
 	def build_list_of_chems(self, request_post):
 		"""
@@ -579,6 +584,7 @@ class CTSTasks(QEDTasks):
 		a single request returns data for all properties, and
 		some of those properties have multiple methods.
 		"""
+
 		epi_props_list = request_post.get('pchem_request', {}).get('epi', [])  # available epi props
 		props = request_post['pchem_request']['epi']  # user's requested epi props
 		if 'water_sol' in epi_props_list or 'vapor_press' in epi_props_list:
