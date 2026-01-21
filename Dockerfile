@@ -1,6 +1,6 @@
 # Builds an image for CTS calculator celery worker
 
-FROM mambaorg/micromamba:2.5-alpine3.21
+FROM mambaorg/micromamba:2.5-alpine3.22
 
 ENV APP_USER=www-data
 ENV CONDA_ENV="pyenv"
