@@ -1,6 +1,6 @@
 # Builds an image for CTS calculator celery worker
 
-FROM mambaorg/micromamba:2.3.2-alpine3.21
+FROM mambaorg/micromamba:2.5-alpine3.22
 
 ENV APP_USER=www-data
 ENV CONDA_ENV="pyenv"
@@ -24,27 +24,13 @@ WORKDIR /src
 
 RUN chmod 755 start-worker.sh start-manager.sh
 
-RUN micromamba create -n $CONDA_ENV -c conda-forge python=3.12
+RUN micromamba create -n $CONDA_ENV -c conda-forge python=3.13
 RUN micromamba install -n $CONDA_ENV -f /src/environment.yml
 RUN micromamba clean -p -t -l --trash -y
 RUN micromamba run -n $CONDA_ENV pip uninstall -y xhtml2pdf && micromamba run -n $CONDA_ENV pip install xhtml2pdf
 
-# # Removes any trace of pip to resolve an open CVE:
-# RUN rm -rf \
-#     /root/.cache/pip \
-#     /usr/local/bin/pip \
-#     /usr/local/bin/pip3.10 \
-#     /usr/local/bin/pip3 \
-#     /usr/local/lib/python3.10/site-packages/pip \
-#     /usr/local/lib/python3.10/site-packages/pip-23.0.1.dist-info
-
 # Security Issues Mitigations
 # ------------------------- #
-# RUN apk del gfortran
-# RUN rm -R /opt/conda/pkgs/redis*
-# #RUN rm -R /opt/conda/bin/redis*
-# RUN rm -R /opt/conda/pkgs/postgres*
-# #RUN rm -R /opt/conda/bin/postgres*
 RUN find /opt/conda/pkgs/future* -name "*.pem" -delete || true
 RUN find /opt/conda/lib/python3.10/site-packages/future -name "*.pem" -delete || true
 # RUN find /opt/conda/envs/pyenv -name "*.pem" -delete || true
