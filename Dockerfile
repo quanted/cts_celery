@@ -1,22 +1,18 @@
 # Builds an image for CTS calculator celery worker
 
-FROM mambaorg/micromamba:2.5-alpine3.22
+FROM python:3.13.13-slim
 
 ENV APP_USER=www-data
 ENV CONDA_ENV="pyenv"
 
 USER root
 
-RUN adduser -S $APP_USER -G $APP_USER
-
-RUN apk add --update --no-cache \
-    build-base \
-    jpeg-dev \
-    zlib-dev \
-    libjpeg \
-    gettext \
-    linux-headers \
-    && rm -rf /var/cache/apk/*
+RUN apt-get update && \
+    apt-get install -y \
+        pkg-config \
+        libcairo2-dev \
+        # python3-dev \
+        gcc
 
 COPY . /src/
 WORKDIR /src
@@ -24,10 +20,7 @@ WORKDIR /src
 
 RUN chmod 755 start-worker.sh start-manager.sh
 
-RUN micromamba create -n $CONDA_ENV -c conda-forge python=3.13
-RUN micromamba install -n $CONDA_ENV -f /src/environment.yml
-RUN micromamba clean -p -t -l --trash -y
-RUN micromamba run -n $CONDA_ENV pip uninstall -y xhtml2pdf && micromamba run -n $CONDA_ENV pip install xhtml2pdf
+RUN pip install -r requirements.txt
 
 # Security Issues Mitigations
 # ------------------------- #
