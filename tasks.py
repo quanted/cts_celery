@@ -217,7 +217,7 @@ class CTSTasks(QEDTasks):
 		(single job), then leaving page; the celery workers would continue processing
 		that job despite the user not being there :(
 		"""
-		if request_post.get('calc') == 'opera' and not request_post.get('service') == "getTransProducts" and 'nodes' in request_post:'
+		if request_post.get('calc') == 'opera' and not request_post.get('service') == "getTransProducts" and 'nodes' in request_post:
 			logging.info("Calling opera with batch true!")
 			# Send all chemicals to OPERA calc to compute at the same time:
 			self.handle_opera_request(request_post.get('sessionid'), request_post, batch=True)
