@@ -339,7 +339,9 @@ class CTSTasks(QEDTasks):
 				chem_data['node'] = request_post['nodes'][node_index]
 				chem_data['request_post'] = {'workflow': request_post.get('workflow')}
 				del chem_data['nodes']
+				logging.info("tasks.py chem_data: {}".format(chem_data))
 				db_results = self.opera_calc.check_opera_db(chem_data)
+				logging.info("db_results: {}".format(db_results))
 				if not db_results:
 					remaining_chems.append(chemical_obj['smiles'])
 					continue
